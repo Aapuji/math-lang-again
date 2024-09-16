@@ -1,0 +1,178 @@
+use std::io::{self, BufRead, BufReader, Read};
+
+use crate::token::{Token, TokenKind};
+
+pub struct Lexer<'t> {
+    src: Box<dyn Iterator<Item = String> + 't>,
+    i: usize,
+    line: usize,
+    in_string: bool,
+    comment_nest_lvl: u32
+}
+
+impl<'t> Lexer<'t> {
+    pub fn new<R: Read + 't>(src: R) -> Self {
+        Self {
+            src: Box::new(BufReader::new(src).lines().map(Result::unwrap)),
+            i: 0,
+            line: 1,
+            in_string: false,
+            comment_nest_lvl: 0
+        }
+    }
+
+    pub fn lex(&mut self) -> io::Result<Vec<Token>> {
+        let mut tokens = vec![];
+        
+        while let Some(line) = self.src.next() {
+            self.lex_line(&mut tokens, &line);
+
+            self.add_token(&mut tokens, TokenKind::EOL);
+        }
+
+        self.add_token(&mut tokens, TokenKind::EOF);
+
+        Ok(tokens)
+    }
+
+    pub fn lex_line(&mut self, tokens: &mut Vec<Token>, line: &str) {
+        let mut i = 0;
+        let mut chars = line.chars();
+        let mut current = chars.next();
+        let mut current_token = Token::default(); // Placeholder value
+
+        while let Some(ch) = current.clone() {
+            let mut next = || {
+                current = chars.next();
+                i += 1;
+    
+                current
+            };
+
+            if self.in_string && !['\'', '"'].contains(&ch) {
+                current_token.append_to_lexeme(ch);
+                next();
+                continue;
+                // todo escape sequences
+            } 
+            
+            if matches!(current_token.kind(), TokenKind::Number(_)) && !(ch.is_digit(10) || ch == '_') {
+                tokens.push(current_token);
+                current_token = Token::default();
+            } 
+            
+            if matches!(current_token.kind(), TokenKind::Ident(_)) && !(ch.is_alphanumeric() || ch == '_') {
+                tokens.push(current_token);
+                current_token = Token::default();
+            } 
+
+            match ch {
+                '+' => self.add_token(tokens, TokenKind::Plus),
+                '-' => self.add_token(tokens, TokenKind::Minus),
+                '*' => self.add_token(tokens, TokenKind::Star),
+                '/' => self.add_token(tokens, TokenKind::Slash),
+                '^' => self.add_token(tokens, TokenKind::Caret),
+                '=' => {
+                    if let Some('=') = next() {
+                        self.add_token(tokens, TokenKind::DblEq);
+                    } else {
+                        self.add_token(tokens, TokenKind::Eq);
+                        continue;
+                    }
+                }
+                '!' => {
+                    if let Some('=') = next() {
+                        self.add_token(tokens, TokenKind::BangEq);
+                    } else {
+                        self.add_token(tokens, TokenKind::Bang);
+                        continue;
+                    }
+                }
+                '~' => self.add_token(tokens, TokenKind::Tilde),
+                '|' => self.add_token(tokens, TokenKind::Bar),
+                '&' => self.add_token(tokens, TokenKind::Amp),
+                '\\' => self.add_token(tokens, TokenKind::BackSlash),
+                '<' => {
+                    if let Some('=') = next() {
+                        self.add_token(tokens, TokenKind::LessEq);
+                    } else {
+                        self.add_token(tokens, TokenKind::Less);
+                        continue;
+                    }
+                }
+                '>' => {
+                    if let Some('=') = next() {
+                        self.add_token(tokens, TokenKind::GreaterEq);
+                    } else {
+                        self.add_token(tokens, TokenKind::Greater);
+                        continue;
+                    }
+                }
+                '(' => self.add_token(tokens, TokenKind::OpenParen),
+                ')' => self.add_token(tokens, TokenKind::CloseParen),
+                '[' => self.add_token(tokens, TokenKind::OpenBracket),
+                ']' => self.add_token(tokens, TokenKind::CloseBracket),
+                '{' => self.add_token(tokens, TokenKind::OpenBrace),
+                '}' => self.add_token(tokens, TokenKind::CloseBrace),
+                ',' => self.add_token(tokens, TokenKind::Comma),
+                '.' => self.add_token(tokens, TokenKind::Dot),
+                ';' => self.add_token(tokens, TokenKind::Semicolon),
+                ':' => self.add_token(tokens, TokenKind::Colon),
+                '#' => self.add_token(tokens, TokenKind::Hash),
+                '\n' => self.add_token(tokens, TokenKind::EOL),
+                '_' => match current_token.kind() {
+                    TokenKind::Ident(_) => current_token.append_to_lexeme(ch),
+                    TokenKind::Number(_) => current_token.append_to_lexeme(ch),
+                    TokenKind::String(_)   |
+                    TokenKind::Char(_)     |
+                    TokenKind::Keyword(_)  => unreachable!(),
+                    _ => self.add_token(tokens, TokenKind::Underscore),
+                },
+                '\'' => {
+                    if let TokenKind::Char(_) = current_token.kind() {
+                        tokens.push(current_token);
+                        current_token = Token::default();
+                        self.in_string = false;
+                    } else {
+                        current_token = Token::new(TokenKind::Char(String::new()), self.line);
+                        self.in_string = true;
+                    }
+                }
+                '"' => {
+                    if let TokenKind::String(_) = current_token.kind() {
+                        tokens.push(current_token);
+                        current_token = Token::default();
+                        self.in_string = false;
+                    } else {
+                        current_token = Token::new(TokenKind::String(String::new()), self.line);
+                        self.in_string = true;
+                    }
+                },
+                _ => {
+                    if ch.is_digit(10) {
+                        if let TokenKind::Number(_) = current_token.kind() {
+                            current_token.append_to_lexeme(ch);
+                        } else if let TokenKind::Ident(_) = current_token.kind() {
+                            current_token.append_to_lexeme(ch);
+                        } else {
+                            current_token = Token::new(TokenKind::Number(String::from(ch)), self.line);
+                        }
+                    } else if ch.is_alphabetic() {
+                        current_token = Token::new(TokenKind::Ident(String::from(ch)), self.line);
+                    }
+                }
+            }
+
+            next();
+        }
+
+        if current_token.kind() != &TokenKind::EOL {
+            tokens.push(current_token);
+        }
+    }
+
+
+    pub fn add_token(&self, tokens: &mut Vec<Token>, kind: TokenKind) {
+        tokens.push(Token::new(kind, self.line));
+    }
+}
