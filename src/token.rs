@@ -63,6 +63,7 @@ pub enum TokenKind {
 
     // Multi-Character Tokens
     DblEq, BangEq, LessEq, GreaterEq,
+    PlusMinus, MinusPlus,
 
     // Value Tokens
     Ident(String), Keyword(String), String(String), Char(String), 

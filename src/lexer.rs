@@ -1,10 +1,9 @@
 use std::io::{self, BufRead, BufReader, Read};
 
-use crate::token::{Token, TokenKind};
+use crate::{error::{self, Error, LexError}, token::{Token, TokenKind}};
 
 pub struct Lexer<'t> {
     src: Box<dyn Iterator<Item = String> + 't>,
-    i: usize,
     line: usize,
     in_string: bool,
     comment_nest_lvl: u32
@@ -14,14 +13,13 @@ impl<'t> Lexer<'t> {
     pub fn new<R: Read + 't>(src: R) -> Self {
         Self {
             src: Box::new(BufReader::new(src).lines().map(Result::unwrap)),
-            i: 0,
             line: 1,
             in_string: false,
             comment_nest_lvl: 0
         }
     }
 
-    pub fn lex(&mut self) -> io::Result<Vec<Token>> {
+    pub fn lex(&mut self) -> error::Result<Vec<Token>> {
         let mut tokens = vec![];
         
         while let Some(line) = self.src.next() {
@@ -31,6 +29,10 @@ impl<'t> Lexer<'t> {
         }
 
         self.add_token(&mut tokens, TokenKind::EOF);
+
+        if self.in_string {
+            return Err(Error::Lexer(LexError::UnclosedString));
+        }
 
         Ok(tokens)
     }
@@ -49,6 +51,25 @@ impl<'t> Lexer<'t> {
                 current
             };
 
+            if self.comment_nest_lvl > 0 {
+                if ch == '*' {
+                    if let Some('/') = next() {
+                        self.comment_nest_lvl -= 1;
+
+                        next();
+                    }
+
+                    continue;
+                } else {
+                    next();
+                }
+
+                println!("cc [{}]", ch);
+
+
+                continue;
+            }
+
             if self.in_string && !['\'', '"'].contains(&ch) {
                 current_token.append_to_lexeme(ch);
                 next();
@@ -64,13 +85,40 @@ impl<'t> Lexer<'t> {
             if matches!(current_token.kind(), TokenKind::Ident(_)) && !(ch.is_alphanumeric() || ch == '_') {
                 tokens.push(current_token);
                 current_token = Token::default();
-            } 
+            }
 
             match ch {
                 '+' => self.add_token(tokens, TokenKind::Plus),
                 '-' => self.add_token(tokens, TokenKind::Minus),
-                '*' => self.add_token(tokens, TokenKind::Star),
-                '/' => self.add_token(tokens, TokenKind::Slash),
+                '*' => {
+                    self.add_token(tokens, TokenKind::Star)
+                },
+                '/' => {
+                    let n = next();
+
+                    if let Some('/') = n {
+                        if current_token.kind() != &TokenKind::EOL {
+                            tokens.push(current_token);
+                            current_token = Token::default();
+                        }
+
+                        return;
+                    }
+
+                    if let Some('*') = n {
+                        if current_token.kind() != &TokenKind::EOL {
+                            tokens.push(current_token);
+                            current_token = Token::default()
+                        }
+
+                        self.comment_nest_lvl += 1;
+
+                        next();
+                        continue;
+                    }
+
+                    self.add_token(tokens, TokenKind::Slash)
+                }
                 '^' => self.add_token(tokens, TokenKind::Caret),
                 '=' => {
                     if let Some('=') = next() {
