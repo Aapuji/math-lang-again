@@ -1,6 +1,5 @@
-use std::collections::HashSet;
 
-use num::{BigInt, BigUint, BigRational, Complex};
+use num::{BigInt, BigRational};
 
 use crate::types::Type;
 
@@ -10,19 +9,20 @@ pub struct Value {
     type_: Type
 }
 
-/// Representing a possible value in the language.
+impl Value {
+    pub fn new(value: Val, type_: Type) -> Self {
+        Self {
+            value,
+            type_
+        }
+    }
+}
+
+/// Represents the internal representation of a value
 #[derive(Debug, Clone)]
 pub enum Val {
-    Uint(BigUint),
     Int(BigInt),
-    Rational(BigRational),
-    Complex(Complex<BigRational>),
-    Ascii(u8),
-    Char(char),
-    String(String),
-    Bool(bool),
-    FiniteSet(HashSet<Val>)
-    // Others todo
+    Decimal(BigRational),
 }
 
 // Todo, values with different Vals (like Uint 100 vs Int 100) are the same value, but are different in internals. So hashing will be different, so there has to be a preliminary step.

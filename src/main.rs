@@ -11,6 +11,7 @@ use std::env;
 
 use config::{Config, Mode};
 use lexer::Lexer;
+use parser::Parser;
 
 fn main() {
     let config = Config::build(env::args()).unwrap();
@@ -21,7 +22,9 @@ fn main() {
 
         let tokens = lexer.lex().unwrap();
 
-        println!("{:#?}", tokens);
-    }
+        let mut parser = Parser::new(&tokens);
+        let ast = parser.parse();
 
+        println!("{:#?}", ast);
+    }
 }

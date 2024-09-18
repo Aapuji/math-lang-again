@@ -1,6 +1,8 @@
+use crate::value::Value;
+
 #[derive(Debug)]
 pub struct Ast {
-    stmts: Vec<Node>
+    stmts: Vec<Stmt>
 }
 
 impl Ast {
@@ -10,12 +12,17 @@ impl Ast {
         }
     }
 
-    pub fn push_stmt(&mut self, stmt: Node) {
+    pub fn push_stmt(&mut self, stmt: Stmt) {
         self.stmts.push(stmt);
     }
 }
 
 #[derive(Debug)]
-pub struct Node {
-    
+pub enum Stmt {
+    Expr(Expr)
+}
+
+#[derive(Debug)]
+pub enum Expr {
+    Literal(Value)
 }
