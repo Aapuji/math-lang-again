@@ -1,5 +1,5 @@
 use num::bigint::Sign;
-use num::{BigInt, BigRational, Complex};
+use num::{BigInt, BigRational, Complex, FromPrimitive};
 
 use crate::ast::{Ast, Expr, Stmt};
 use crate::token::{Token, TokenKind};
@@ -36,9 +36,7 @@ impl<'t> Parser<'t> {
 
     fn parse_stmt(&mut self) -> Stmt {
         let res = self.parse_declaration();
-        
-        self.next();
-        
+                
         if let &TokenKind::EOL = self.current().kind() {
             self.next();
         }
@@ -55,8 +53,10 @@ impl<'t> Parser<'t> {
     }
 
     fn parse_expr(&mut self) -> Expr {
-
-        self.parse_primary()
+        let res = self.parse_primary();
+        self.next();
+        
+        res
     }
 
     fn parse_primary(&mut self) -> Expr {
@@ -64,6 +64,7 @@ impl<'t> Parser<'t> {
             TokenKind::Ident(lexeme) => return self.parse_ident(lexeme.clone()),
             TokenKind::String(lexeme) => return self.parse_string(lexeme.clone()),
             TokenKind::Number(lexeme) => return self.parse_number(lexeme.clone()),
+            TokenKind::OpenParen => return self.parse_grouping(),
             _ => ()
         }
 
@@ -73,12 +74,21 @@ impl<'t> Parser<'t> {
 
     // Parsing of keywords will have already been done prior, in the statement parsing parts
     fn parse_ident(&mut self, lexeme: String) -> Expr {
-        Expr::Literal(
-            Value::new(
-                Val::Ident(lexeme),
-                Type::Symbol
+        if &lexeme == "i" {
+            Expr::Literal(
+                Value::new(
+                    Val::Complex(Complex::new(BigRational::from(BigInt::from(0)), BigRational::from(BigInt::from(1)))),
+                    Type::Num(TNum::complex())
+                )
             )
-        )
+        } else {
+            Expr::Literal(
+                Value::new(
+                    Val::Ident(lexeme),
+                    Type::Symbol
+                )
+            )
+        }
     }
 
     fn parse_string(&mut self, lexeme: String) -> Expr {
@@ -141,7 +151,10 @@ impl<'t> Parser<'t> {
 
 
         if self.match_next(&TokenKind::Ident("i".to_owned())) {
-            let Expr::Literal(val) = num;
+            let val = match num {
+                Expr::Literal(v) => v,
+                Expr::Group(_) => unreachable!()
+            };
             
             let new_val = match val.val_move() {
                 Val::Int(x) => Val::Complex(Complex::new(BigRational::from(BigInt::from(0)), x.into())),
@@ -153,6 +166,24 @@ impl<'t> Parser<'t> {
         }
 
         num
+    }
+
+    fn parse_grouping(&mut self) -> Expr {
+        self.next();
+
+        let expr = self.parse_expr();
+
+        if let TokenKind::EOL = self.current().kind() {
+            self.next();
+        }
+        
+        if let TokenKind::CloseParen = self.current().kind() {
+            ()
+        } else {
+            panic!("Closing parenthesis expected");
+        }
+
+        Expr::Group(Box::new(expr))
     }
 
     /// Consumes next token if it matches the given [`TokenKind`]

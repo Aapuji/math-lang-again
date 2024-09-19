@@ -24,5 +24,6 @@ pub enum Stmt {
 
 #[derive(Debug)]
 pub enum Expr {
-    Literal(Value)
+    Literal(Value),
+    Group(Box<Expr>)
 }
