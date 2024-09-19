@@ -25,7 +25,9 @@ impl<'t> Lexer<'t> {
         while let Some(line) = self.src.next() {
             self.lex_line(&mut tokens, &line);
 
-            self.add_token(&mut tokens, TokenKind::EOL);
+            if !self.in_string && self.comment_nest_lvl == 0 {
+                self.add_token(&mut tokens, TokenKind::EOL);
+            }
         }
 
         self.add_token(&mut tokens, TokenKind::EOF);
@@ -206,7 +208,11 @@ impl<'t> Lexer<'t> {
                             current_token = Token::new(TokenKind::Number(String::from(ch)), self.line);
                         }
                     } else if ch.is_alphabetic() {
-                        current_token = Token::new(TokenKind::Ident(String::from(ch)), self.line);
+                        if let TokenKind::Ident(_) = current_token.kind() {
+                            current_token.append_to_lexeme(ch);
+                        } else  {
+                            current_token = Token::new(TokenKind::Ident(String::from(ch)), self.line);
+                        }
                     }
                 }
             }

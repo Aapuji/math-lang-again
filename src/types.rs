@@ -67,8 +67,6 @@ impl TText {
 #[derive(Debug, Clone, Copy)]
 pub enum Type {
     Num(TNum),
-    Text(TText)
+    Text(TText),
+    Symbol
 }
-
-
-impl Type {}

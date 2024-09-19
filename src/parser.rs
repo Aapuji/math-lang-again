@@ -1,9 +1,9 @@
 use num::bigint::Sign;
-use num::{BigInt, BigRational};
+use num::{BigInt, BigRational, Complex};
 
 use crate::ast::{Ast, Expr, Stmt};
 use crate::token::{Token, TokenKind};
-use crate::types::{TNum, Type};
+use crate::types::{TNum, TText, Type};
 use crate::value::{Val, Value};
 
 pub struct Parser<'t> {
@@ -13,6 +13,8 @@ pub struct Parser<'t> {
 }
 
 impl<'t> Parser<'t> {
+    const KEYWORDS: [&'static str; 7] = ["do", "end", "data", "class", "mod", "import", "as"];
+
     pub fn new(tokens: &'t [Token]) -> Self {
         Self { 
             tokens, 
@@ -59,20 +61,38 @@ impl<'t> Parser<'t> {
 
     fn parse_primary(&mut self) -> Expr {
         match self.current().kind() {
-            TokenKind::Number(l1) => if let Some(expr) = self.parse_number(l1.clone()) {
-                return expr;
-            }
+            TokenKind::Ident(lexeme) => return self.parse_ident(lexeme.clone()),
+            TokenKind::String(lexeme) => return self.parse_string(lexeme.clone()),
+            TokenKind::Number(lexeme) => return self.parse_number(lexeme.clone()),
             _ => ()
         }
 
+        dbg!(&self.tokens[self.i..]);
         panic!("Expected expression") // Todo: change for actual error handling
     }
 
-    fn parse_number(&mut self, mut l1: String) -> Option<Expr> {
-        self.next();
+    // Parsing of keywords will have already been done prior, in the statement parsing parts
+    fn parse_ident(&mut self, lexeme: String) -> Expr {
+        Expr::Literal(
+            Value::new(
+                Val::Ident(lexeme),
+                Type::Symbol
+            )
+        )
+    }
 
+    fn parse_string(&mut self, lexeme: String) -> Expr {
+        Expr::Literal(
+            Value::new(
+                Val::String(lexeme), 
+                Type::Text(TText::str())
+            )
+        )
+    }
+
+    fn parse_number(&mut self, mut l1: String) -> Expr {
         // Decimal (eg. 12.34)
-        if let &TokenKind::Dot = self.current().kind() {
+        let mut num = if self.match_next(&TokenKind::Dot) {
             fn getlen(s: &str) -> BigInt {
                 let mut n = BigInt::from(1);
 
@@ -89,27 +109,50 @@ impl<'t> Parser<'t> {
                     l1.push_str(&l2);
                     self.next();
 
-                    Some(Expr::Literal(
+                    Expr::Literal(
                         Value::new(
                             Val::Decimal(
                                 BigRational::new(l1.parse().unwrap(), getlen(&l2))),
                             Type::Num(TNum::real())
                         )
-                    ))
+                    )
                 } else {
-                    None
+                    Expr::Literal(
+                        Value::new(
+                            Val::Int(l1.parse().unwrap()), 
+                            Type::Num(TNum::int())
+                    ))
                 }
             } else {
-                None
+                Expr::Literal(
+                    Value::new(
+                        Val::Int(l1.parse().unwrap()), 
+                        Type::Num(TNum::int())
+                ))
             }
         // Int (eg. 1234)
         } else {
-            Some(Expr::Literal(
+            Expr::Literal(
                 Value::new(
                     Val::Int(l1.parse().unwrap()), 
                     Type::Num(TNum::int())
-            )))
+            ))
+        };
+
+
+        if self.match_next(&TokenKind::Ident("i".to_owned())) {
+            let Expr::Literal(val) = num;
+            
+            let new_val = match val.val_move() {
+                Val::Int(x) => Val::Complex(Complex::new(BigRational::from(BigInt::from(0)), x.into())),
+                Val::Decimal(x) => Val::Complex(Complex::new(BigRational::from(BigInt::from(0)), x.into())),
+                _ => unreachable!()
+            };
+
+            num = Expr::Literal(Value::new(new_val, Type::Num(TNum::complex())));
         }
+
+        num
     }
 
     /// Consumes next token if it matches the given [`TokenKind`]
@@ -117,7 +160,6 @@ impl<'t> Parser<'t> {
         if self.i >= self.tokens.len() {
             false
         } else if let Some(t) = self.peek() {
-            dbg!("gogog");
             if t.kind() == kind {
                 self.next();
                 true

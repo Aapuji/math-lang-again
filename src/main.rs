@@ -22,6 +22,8 @@ fn main() {
 
         let tokens = lexer.lex().unwrap();
 
+        println!("tokens: {:#?}", tokens);
+
         let mut parser = Parser::new(&tokens);
         let ast = parser.parse();
 
