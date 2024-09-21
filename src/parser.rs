@@ -53,10 +53,58 @@ impl<'t> Parser<'t> {
     }
 
     fn parse_expr(&mut self) -> Expr {
-        let res = self.parse_primary();
+        let res = self.parse_factor();
         self.next();
         
         res
+    }
+
+    fn parse_factor(&mut self) -> Expr {
+        let mut expr = self.parse_unary();
+        self.next();
+
+        while matches!(self.current().kind(), TokenKind::Slash | TokenKind::Star) {
+            let op = self.current().clone();
+            self.next();
+            let right = self.parse_unary();
+            self.next();
+
+            expr = Expr::Binary(Box::new(expr), op, Box::new(right));
+        }
+
+        return expr;
+    }
+
+    fn parse_unary(&mut self) -> Expr {
+        match self.current().kind() {
+            TokenKind::Bang  |
+            TokenKind::Minus |
+            TokenKind::Plus  |
+            TokenKind::Tilde => {
+                let op = self.current().clone();
+                self.next();
+                let right = self.parse_unary();
+
+                return Expr::Unary(op, Box::new(right));
+            }
+            _ => self.parse_power()
+        }
+    }
+
+    fn parse_power(&mut self) -> Expr {
+        let mut expr = self.parse_primary();
+
+        if self.match_next(&TokenKind::Caret) {
+            let op = self.current().clone();
+
+            self.next();
+            let right = self.parse_unary();
+            expr = Expr::Binary(Box::new(expr), op, Box::new(right));
+        } else {
+            return expr;
+        }
+
+        expr 
     }
 
     fn parse_primary(&mut self) -> Expr {
@@ -65,10 +113,10 @@ impl<'t> Parser<'t> {
             TokenKind::String(lexeme) => return self.parse_string(lexeme.clone()),
             TokenKind::Number(lexeme) => return self.parse_number(lexeme.clone()),
             TokenKind::OpenParen => return self.parse_grouping(),
+
             _ => ()
         }
 
-        dbg!(&self.tokens[self.i..]);
         panic!("Expected expression") // Todo: change for actual error handling
     }
 
@@ -153,7 +201,7 @@ impl<'t> Parser<'t> {
         if self.match_next(&TokenKind::Ident("i".to_owned())) {
             let val = match num {
                 Expr::Literal(v) => v,
-                Expr::Group(_) => unreachable!()
+                _ => unreachable!()
             };
             
             let new_val = match val.val_move() {
