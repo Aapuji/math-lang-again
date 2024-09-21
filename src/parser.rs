@@ -49,25 +49,34 @@ impl<'t> Parser<'t> {
 
         // }
 
-        Stmt::Expr(self.parse_expr())
+        Stmt::Expr({ let x = self.parse_expr(); self.next(); x })
     }
 
     fn parse_expr(&mut self) -> Expr {
-        let res = self.parse_factor();
-        self.next();
-        
-        res
+        self.parse_term()
+    }
+
+    fn parse_term(&mut self) -> Expr {
+        let mut expr = self.parse_factor();
+
+        while self.match_next(&[&TokenKind::Plus, &TokenKind::Minus]) {
+            let op = self.current().clone();
+            self.next();
+            let right = self.parse_factor();
+
+            expr = Expr::Binary(Box::new(expr), op, Box::new(right));
+        }
+
+        return expr;
     }
 
     fn parse_factor(&mut self) -> Expr {
         let mut expr = self.parse_unary();
-        self.next();
 
-        while matches!(self.current().kind(), TokenKind::Slash | TokenKind::Star) {
+        while self.match_next(&[&TokenKind::Slash, &TokenKind::Star]) {
             let op = self.current().clone();
             self.next();
             let right = self.parse_unary();
-            self.next();
 
             expr = Expr::Binary(Box::new(expr), op, Box::new(right));
         }
@@ -94,7 +103,7 @@ impl<'t> Parser<'t> {
     fn parse_power(&mut self) -> Expr {
         let mut expr = self.parse_primary();
 
-        if self.match_next(&TokenKind::Caret) {
+        if self.match_next(&[&TokenKind::Caret]) {
             let op = self.current().clone();
 
             self.next();
@@ -150,7 +159,7 @@ impl<'t> Parser<'t> {
 
     fn parse_number(&mut self, mut l1: String) -> Expr {
         // Decimal (eg. 12.34)
-        let mut num = if self.match_next(&TokenKind::Dot) {
+        let mut num = if self.match_next(&[&TokenKind::Dot]) {
             fn getlen(s: &str) -> BigInt {
                 let mut n = BigInt::from(1);
 
@@ -198,7 +207,7 @@ impl<'t> Parser<'t> {
         };
 
 
-        if self.match_next(&TokenKind::Ident("i".to_owned())) {
+        if self.match_next(&[&TokenKind::Ident("i".to_owned())]) {
             let val = match num {
                 Expr::Literal(v) => v,
                 _ => unreachable!()
@@ -220,12 +229,9 @@ impl<'t> Parser<'t> {
         self.next();
 
         let expr = self.parse_expr();
-
-        if let TokenKind::EOL = self.current().kind() {
-            self.next();
-        }
         
-        if let TokenKind::CloseParen = self.current().kind() {
+        dbg!(&self.tokens[self.i..]);
+        if self.match_next(&[&TokenKind::CloseParen]) {
             ()
         } else {
             panic!("Closing parenthesis expected");
@@ -235,11 +241,11 @@ impl<'t> Parser<'t> {
     }
 
     /// Consumes next token if it matches the given [`TokenKind`]
-    fn match_next(&mut self, kind: &TokenKind) -> bool {
+    fn match_next(&mut self, kind: &[&TokenKind]) -> bool {
         if self.i >= self.tokens.len() {
             false
         } else if let Some(t) = self.peek() {
-            if t.kind() == kind {
+            if  kind.iter().any(|&k| t.kind() == k) {
                 self.next();
                 true
             } else {
