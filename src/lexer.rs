@@ -28,6 +28,8 @@ impl<'t> Lexer<'t> {
             if !self.in_string && self.comment_nest_lvl == 0 {
                 self.add_token(&mut tokens, TokenKind::EOL);
             }
+
+            self.line += 1;
         }
 
         self.add_token(&mut tokens, TokenKind::EOF);
@@ -53,6 +55,10 @@ impl<'t> Lexer<'t> {
                 current
             };
 
+            if ch == '\n' {
+                self.line += 1;
+            }
+
             if self.comment_nest_lvl > 0 {
                 if ch == '*' {
                     if let Some('/') = next() {
@@ -62,6 +68,12 @@ impl<'t> Lexer<'t> {
                     }
 
                     continue;
+                } else if ch == '/' {
+                    if let Some('*') = next() {
+                        self.comment_nest_lvl += 1;
+
+                        next();
+                    }
                 } else {
                     next();
                 }
@@ -101,7 +113,7 @@ impl<'t> Lexer<'t> {
                     if let Some('/') = n {
                         if current_token.kind() != &TokenKind::EOL {
                             tokens.push(current_token);
-                            current_token = Token::default();
+                            // current_token = Token::default();
                         }
 
                         return;
@@ -119,7 +131,8 @@ impl<'t> Lexer<'t> {
                         continue;
                     }
 
-                    self.add_token(tokens, TokenKind::Slash)
+                    self.add_token(tokens, TokenKind::Slash);
+                    continue;
                 }
                 '^' => self.add_token(tokens, TokenKind::Caret),
                 '=' => {
@@ -176,7 +189,7 @@ impl<'t> Lexer<'t> {
                     TokenKind::String(_)   |
                     TokenKind::Char(_)     |
                     TokenKind::Keyword(_)  => unreachable!(),
-                    _ => self.add_token(tokens, TokenKind::Underscore),
+                    _ => current_token = Token::new(TokenKind::Ident("_".to_owned()), self.line),
                 },
                 '\'' => {
                     if let TokenKind::Char(_) = current_token.kind() {

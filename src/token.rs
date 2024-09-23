@@ -57,7 +57,6 @@ pub enum TokenKind {
     OpenParen, CloseParen, OpenBracket, CloseBracket, 
     OpenBrace, CloseBrace, 
     Hash, Dot, Comma, Semicolon, Colon,
-    Underscore,
 
     // Multi-Character Tokens
     DblEq, BangEq, LessEq, GreaterEq,

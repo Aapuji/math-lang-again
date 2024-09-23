@@ -27,5 +27,6 @@ pub enum Expr {
     Literal(Value),
     Group(Box<Expr>),
     Unary(Token, Box<Expr>),
-    Binary(Box<Expr>, Token, Box<Expr>)
+    Binary(Box<Expr>, Token, Box<Expr>),
+    Call(Box<Expr>, Vec<Expr>)
 }

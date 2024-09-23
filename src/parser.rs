@@ -1,3 +1,6 @@
+use core::panic;
+use std::fmt::Arguments;
+
 use num::bigint::Sign;
 use num::{BigInt, BigRational, Complex, FromPrimitive};
 
@@ -13,7 +16,7 @@ pub struct Parser<'t> {
 }
 
 impl<'t> Parser<'t> {
-    const KEYWORDS: [&'static str; 7] = ["do", "end", "data", "class", "mod", "import", "as"];
+    const KEYWORDS: [&'static str; 8] = ["do", "end", "data", "class", "object", "mod", "import", "as"];
 
     pub fn new(tokens: &'t [Token]) -> Self {
         Self { 
@@ -34,7 +37,7 @@ impl<'t> Parser<'t> {
         ast
     }
 
-    fn parse_stmt(&mut self) -> Stmt {
+    fn parse_stmt(&mut self) -> Stmt {        
         let res = self.parse_declaration();
                 
         if let &TokenKind::EOL = self.current().kind() {
@@ -62,6 +65,7 @@ impl<'t> Parser<'t> {
         while self.match_next(&[&TokenKind::Plus, &TokenKind::Minus]) {
             let op = self.current().clone();
             self.next();
+
             let right = self.parse_factor();
 
             expr = Expr::Binary(Box::new(expr), op, Box::new(right));
@@ -72,10 +76,14 @@ impl<'t> Parser<'t> {
 
     fn parse_factor(&mut self) -> Expr {
         let mut expr = self.parse_unary();
+        // self.next();
+
+        dbg!("/", &self.tokens[self.i..]);
 
         while self.match_next(&[&TokenKind::Slash, &TokenKind::Star]) {
             let op = self.current().clone();
             self.next();
+
             let right = self.parse_unary();
 
             expr = Expr::Binary(Box::new(expr), op, Box::new(right));
@@ -92,6 +100,7 @@ impl<'t> Parser<'t> {
             TokenKind::Tilde => {
                 let op = self.current().clone();
                 self.next();
+
                 let right = self.parse_unary();
 
                 return Expr::Unary(op, Box::new(right));
@@ -101,19 +110,60 @@ impl<'t> Parser<'t> {
     }
 
     fn parse_power(&mut self) -> Expr {
-        let mut expr = self.parse_primary();
+        let mut expr = self.parse_call();
 
         if self.match_next(&[&TokenKind::Caret]) {
             let op = self.current().clone();
-
             self.next();
-            let right = self.parse_unary();
+
+            let right = self.parse_call();
             expr = Expr::Binary(Box::new(expr), op, Box::new(right));
         } else {
             return expr;
         }
 
         expr 
+    }
+
+    fn parse_call(&mut self) -> Expr {
+        let mut expr = self.parse_primary();
+
+        loop {
+            if self.match_next(&[&TokenKind::OpenParen]) {
+                expr = self.finish_call(expr);
+            } else {
+                break;
+            }
+        }
+
+        expr
+    }
+
+    fn finish_call(&mut self, callee: Expr) -> Expr {
+        let mut args = vec![];
+
+        if !matches!(self.current().kind(), &TokenKind::EOF) {
+            // A do-while loop
+            while {
+                if !self.match_next(&[&TokenKind::Comma]) {
+                    self.next();
+
+                    args.push(self.parse_expr());
+
+                    self.match_next(&[&TokenKind::Comma])
+                } else {
+                    true
+                }
+            } {}
+        }
+
+        if self.match_next(&[&TokenKind::CloseParen]) {
+            ()
+        } else {
+            panic!("Expected ')' after arguments.");
+        }
+
+        Expr::Call(Box::new(callee), args)
     }
 
     fn parse_primary(&mut self) -> Expr {
@@ -230,7 +280,6 @@ impl<'t> Parser<'t> {
 
         let expr = self.parse_expr();
         
-        dbg!(&self.tokens[self.i..]);
         if self.match_next(&[&TokenKind::CloseParen]) {
             ()
         } else {
