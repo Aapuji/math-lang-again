@@ -16,7 +16,7 @@ pub struct Parser<'t> {
 }
 
 impl<'t> Parser<'t> {
-    const KEYWORDS: [&'static str; 8] = ["do", "end", "data", "class", "object", "mod", "import", "as"];
+    const KEYWORDS: [&'static str; 7] = ["do", "end", "data", "class", "object", "import", "as"];
 
     pub fn new(tokens: &'t [Token]) -> Self {
         Self { 
@@ -30,7 +30,11 @@ impl<'t> Parser<'t> {
         let mut ast = Ast::new();
 
         while self.current().kind() != &TokenKind::EOF {
-            if let TokenKind::EOL = self.current().kind() {
+            if let TokenKind::EOL | TokenKind::Semicolon = self.current().kind() {
+                if let TokenKind::EOL = self.current().kind() {
+                    self.line += 1;
+                }
+                
                 self.next();
                 continue;
             }
@@ -42,32 +46,63 @@ impl<'t> Parser<'t> {
     }
 
     fn parse_stmt(&mut self) -> Stmt {        
-        let res = self.parse_declaration();
-                
-        if let &TokenKind::EOL = self.current().kind() {
-            self.next();
-        }
+        let res = self.parse_expr_stmt();
 
         res
     }
 
-    fn parse_declaration(&mut self) -> Stmt {
-        Stmt::Expr({ let x = self.parse_expr(); self.next(); x })
+    fn parse_expr_stmt(&mut self) -> Stmt {
+        let expr = self.parse_expr();
+
+        if self.match_next(&[&TokenKind::EOL]) {
+            // add log stmt here
+            ()
+        }
+
+        if self.match_next(&[&TokenKind::Semicolon]) {
+            ()
+        }
+
+        Stmt::Expr(expr)
     }
 
     fn parse_expr(&mut self) -> Expr {
-        self.parse_var_assign()
+        self.parse_var()
     }
 
-    fn parse_var_assign(&mut self) -> Expr {
+    fn parse_func(&mut self) -> Expr {
+        let expr = self.parse_var();
+
+        if self.match_next(&[&TokenKind::Eq]) {
+            if let Expr::Call(name, args) = expr {
+                let op = self.current().clone();
+                self.next();
+
+                let value = self.parse_expr();
+                
+            }
+        }
+        todo!()
+    }
+
+    fn parse_var(&mut self) -> Expr {
         let expr = self.parse_or();
 
         if self.match_next(&[&TokenKind::Eq]) {
             let op = self.current().clone();
+            self.next();
+            let value = self.parse_var();
 
+            if let Expr::Literal(val) = expr {
+                if let Val::Symbol(name) = val.val_move() {
+                    return Expr::Assign(name, Box::new(value));
+                }
+            }
+
+            panic!("Invalid left-hand for assignment"); // TODO: Have actual error reporting
         }
 
-        todo!()
+        expr
     }
 
     fn parse_or(&mut self) -> Expr {
@@ -281,7 +316,7 @@ impl<'t> Parser<'t> {
         } else {
             Expr::Literal(
                 Value::new(
-                    Val::Ident(lexeme),
+                    Val::Symbol(lexeme),
                     Type::Symbol
                 )
             )

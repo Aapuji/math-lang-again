@@ -37,7 +37,7 @@ pub enum Val {
     Decimal(BigRational),
     Complex(Complex<BigRational>),
     String(String),
-    Ident(String) // perhaps have a table to map an ident to a number and then use that number to refer it??
+    Symbol(String) // perhaps have a table to map an ident to a number and then use that number to refer it??
 }
 
 // Todo, values with different Vals (like Uint 100 vs Int 100) are the same value, but are different in internals. So hashing will be different, so there has to be a preliminary step.

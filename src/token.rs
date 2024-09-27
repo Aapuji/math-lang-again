@@ -60,6 +60,7 @@ pub enum TokenKind {
     DblEq, BangEq, LessEq, GreaterEq,
     DblAmp, DblBar,
     EqColon, LessColon, GreaterColon, 
+    SmallArrow, FatArrow,
 
     
     // Triple-Character Tokens
