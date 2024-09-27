@@ -30,8 +30,12 @@ impl<'t> Parser<'t> {
         let mut ast = Ast::new();
 
         while self.current().kind() != &TokenKind::EOF {
-            ast.push_stmt(self.parse_stmt());
+            if let TokenKind::EOL = self.current().kind() {
+                self.next();
+                continue;
+            }
 
+            ast.push_stmt(self.parse_stmt());
         }
 
         ast
@@ -48,15 +52,107 @@ impl<'t> Parser<'t> {
     }
 
     fn parse_declaration(&mut self) -> Stmt {
-        // if self.match_next(&TokenKind::Ident(_)) {
-
-        // }
-
         Stmt::Expr({ let x = self.parse_expr(); self.next(); x })
     }
 
     fn parse_expr(&mut self) -> Expr {
-        self.parse_term()
+        self.parse_var_assign()
+    }
+
+    fn parse_var_assign(&mut self) -> Expr {
+        let expr = self.parse_or();
+
+        if self.match_next(&[&TokenKind::Eq]) {
+            let op = self.current().clone();
+
+        }
+
+        todo!()
+    }
+
+    fn parse_or(&mut self) -> Expr {
+        let mut expr = self.parse_and();
+
+        while self.match_next(&[&TokenKind::DblBar]) {
+            let op = self.current().clone();
+            self.next();
+
+            let right = self.parse_and();
+
+            expr = Expr::Binary(Box::new(expr), op, Box::new(right));
+        }
+
+        expr
+    }
+
+    fn parse_and(&mut self) -> Expr {
+        let mut expr = self.parse_comp();
+
+        while self.match_next(&[&TokenKind::DblAmp]) {
+            let op = self.current().clone();
+            self.next();
+
+            let right = self.parse_comp();
+
+            expr = Expr::Binary(Box::new(expr), op, Box::new(right));
+        }
+
+        expr
+    }
+
+    // TODO: Have it allow for a < b < c.
+    // Perhaps in another pass? As it will have to check if the type implements the Ord class rather than just PartialOrd.
+    fn parse_comp(&mut self) -> Expr {
+        let mut expr = self.parse_set_comp();
+
+        while self.match_next(&[
+            &TokenKind::DblEq, 
+            &TokenKind::Less, &TokenKind::Greater,
+            &TokenKind::LessEq, &TokenKind::GreaterEq
+        ]) {
+            let op = self.current().clone();
+            self.next();
+
+            let right = self.parse_set_comp();
+
+            expr = Expr::Binary(Box::new(expr), op, Box::new(right));
+        }
+
+        expr
+    }
+
+    fn parse_set_comp(&mut self) -> Expr {
+        let mut expr = self.parse_set_ops();
+
+        while self.match_next(&[
+            &TokenKind::EqColon,
+            &TokenKind::LessColon, &TokenKind::GreaterColon,
+            &TokenKind::LessEqColon, &TokenKind::GreaterEqColon
+        ]) {
+            let op = self.current().clone();
+            self.next();
+
+            let right = self.parse_set_ops();
+
+            expr = Expr::Binary(Box::new(expr), op, Box::new(right));
+        }
+
+        expr
+    }
+
+    fn parse_set_ops(&mut self) -> Expr {
+        let mut expr = self.parse_term();
+
+        while self.match_next(&[&TokenKind::Amp, &TokenKind::Bar, &TokenKind::BackSlash]) {
+            let op = self.current().clone();
+            self.next();
+
+            let right = self.parse_term();
+
+            expr = Expr::Binary(Box::new(expr), op, Box::new(right));
+        }
+
+        expr
     }
 
     fn parse_term(&mut self) -> Expr {
@@ -71,14 +167,11 @@ impl<'t> Parser<'t> {
             expr = Expr::Binary(Box::new(expr), op, Box::new(right));
         }
 
-        return expr;
+        expr
     }
 
     fn parse_factor(&mut self) -> Expr {
         let mut expr = self.parse_unary();
-        // self.next();
-
-        dbg!("/", &self.tokens[self.i..]);
 
         while self.match_next(&[&TokenKind::Slash, &TokenKind::Star]) {
             let op = self.current().clone();
@@ -89,7 +182,7 @@ impl<'t> Parser<'t> {
             expr = Expr::Binary(Box::new(expr), op, Box::new(right));
         }
 
-        return expr;
+        expr
     }
 
     fn parse_unary(&mut self) -> Expr {
@@ -116,10 +209,8 @@ impl<'t> Parser<'t> {
             let op = self.current().clone();
             self.next();
 
-            let right = self.parse_call();
+            let right = self.parse_power();
             expr = Expr::Binary(Box::new(expr), op, Box::new(right));
-        } else {
-            return expr;
         }
 
         expr 
@@ -179,7 +270,6 @@ impl<'t> Parser<'t> {
         panic!("Expected expression") // Todo: change for actual error handling
     }
 
-    // Parsing of keywords will have already been done prior, in the statement parsing parts
     fn parse_ident(&mut self, lexeme: String) -> Expr {
         if &lexeme == "i" {
             Expr::Literal(

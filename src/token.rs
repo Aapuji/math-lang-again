@@ -16,7 +16,6 @@ impl Token {
     pub fn lexeme(&self) -> Option<&str> {
         match &self.kind {
             TokenKind::Ident(lexeme)    |
-            TokenKind::Keyword(lexeme)  |
             TokenKind::String(lexeme)   |
             TokenKind::Char(lexeme)     |
             TokenKind::Number(lexeme)   => Some(lexeme),
@@ -27,7 +26,6 @@ impl Token {
     pub fn append_to_lexeme(&mut self, ch: char) {
         match self.kind {
             TokenKind::Ident(ref mut lexeme)    |
-            TokenKind::Keyword(ref mut lexeme)  |
             TokenKind::String(ref mut lexeme)   |
             TokenKind::Char(ref mut lexeme)     |
             TokenKind::Number(ref mut lexeme)   => lexeme.push(ch),
@@ -58,12 +56,17 @@ pub enum TokenKind {
     OpenBrace, CloseBrace, 
     Hash, Dot, Comma, Semicolon, Colon,
 
-    // Multi-Character Tokens
+    // Double-Character Tokens
     DblEq, BangEq, LessEq, GreaterEq,
-    PlusMinus, MinusPlus,
+    DblAmp, DblBar,
+    EqColon, LessColon, GreaterColon, 
+
+    
+    // Triple-Character Tokens
+    LessEqColon, GreaterEqColon,
 
     // Value Tokens
-    Ident(String), Keyword(String), String(String), Char(String), 
+    Ident(String), String(String), Char(String),
     Number(String), 
 
     EOL, EOF

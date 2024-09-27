@@ -22,7 +22,7 @@ pub enum Stmt {
     Expr(Expr)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Literal(Value),
     Group(Box<Expr>),

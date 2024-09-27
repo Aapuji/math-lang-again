@@ -136,8 +136,12 @@ impl<'t> Lexer<'t> {
                 }
                 '^' => self.add_token(tokens, TokenKind::Caret),
                 '=' => {
-                    if let Some('=') = next() {
+                    let n = next();
+
+                    if let Some('=') = n {
                         self.add_token(tokens, TokenKind::DblEq);
+                    } else if let Some(':') = n {
+                        self.add_token(tokens, TokenKind::EqColon);
                     } else {
                         self.add_token(tokens, TokenKind::Eq);
                         continue;
@@ -152,20 +156,52 @@ impl<'t> Lexer<'t> {
                     }
                 }
                 '~' => self.add_token(tokens, TokenKind::Tilde),
-                '|' => self.add_token(tokens, TokenKind::Bar),
-                '&' => self.add_token(tokens, TokenKind::Amp),
+                '|' => {
+                    if let Some('|') = next() {
+                        self.add_token(tokens, TokenKind::DblBar);
+                    } else {
+                        self.add_token(tokens, TokenKind::Bar);
+                        continue;
+                    }
+                },
+                '&' => {
+                    if let Some('&') = next() {
+                        self.add_token(tokens, TokenKind::DblAmp);
+                    } else {
+                        self.add_token(tokens, TokenKind::Amp);
+                        continue;
+                    }
+                }
                 '\\' => self.add_token(tokens, TokenKind::BackSlash),
                 '<' => {
-                    if let Some('=') = next() {
-                        self.add_token(tokens, TokenKind::LessEq);
+                    let n = next();
+
+                    if let Some('=') = n {
+                        if let Some(':') = next() {
+                            self.add_token(tokens, TokenKind::LessEqColon);
+                        } else {
+                            self.add_token(tokens, TokenKind::LessEq);
+                            continue;
+                        }
+                    } else if let Some(':') = n {
+                        self.add_token(tokens, TokenKind::LessColon);
                     } else {
                         self.add_token(tokens, TokenKind::Less);
                         continue;
                     }
                 }
                 '>' => {
-                    if let Some('=') = next() {
-                        self.add_token(tokens, TokenKind::GreaterEq);
+                    let n = next();
+
+                    if let Some('=') = n {
+                        if let Some(':') = next() {
+                            self.add_token(tokens, TokenKind::GreaterEqColon);
+                        } else {
+                            self.add_token(tokens, TokenKind::GreaterEq);
+                            continue;
+                        }
+                    } else if let Some(':') = n {
+                        self.add_token(tokens, TokenKind::GreaterColon);
                     } else {
                         self.add_token(tokens, TokenKind::Greater);
                         continue;
@@ -184,11 +220,10 @@ impl<'t> Lexer<'t> {
                 '#' => self.add_token(tokens, TokenKind::Hash),
                 '\n' => self.add_token(tokens, TokenKind::EOL),
                 '_' => match current_token.kind() {
-                    TokenKind::Ident(_) => current_token.append_to_lexeme(ch),
+                    TokenKind::Ident(_)  => current_token.append_to_lexeme(ch),
                     TokenKind::Number(_) => current_token.append_to_lexeme(ch),
-                    TokenKind::String(_)   |
-                    TokenKind::Char(_)     |
-                    TokenKind::Keyword(_)  => unreachable!(),
+                    TokenKind::String(_) |
+                    TokenKind::Char(_)   => unreachable!(),
                     _ => current_token = Token::new(TokenKind::Ident("_".to_owned()), self.line),
                 },
                 '\'' => {
