@@ -67,22 +67,52 @@ impl<'t> Parser<'t> {
     }
 
     fn parse_expr(&mut self) -> Expr {
-        self.parse_var()
+        self.parse_func()
     }
 
     fn parse_func(&mut self) -> Expr {
-        let expr = self.parse_var();
+        let expr = self.parse_or();
 
         if self.match_next(&[&TokenKind::Eq]) {
-            if let Expr::Call(name, args) = expr {
-                let op = self.current().clone();
-                self.next();
+            self.next();
 
-                let value = self.parse_expr();
+            if let Expr::Call(left, args) = expr {
+                let name = if let Expr::Literal(val) = *left {
+                    if let Val::Symbol(name) = val.val_move() {
+                        Some(name)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                if name.is_none() {
+                    panic!("Invalid left-hand for function definition: name");
+                }
                 
+                let args = args
+                    .into_iter()
+                    .map(|a| {
+                        if let Expr::Literal(val) = a {
+                            if let Val::Symbol(arg) = val.val_move() {
+                                return arg;
+                            }
+                        }
+
+                        // args_are_syms = false;
+                        panic!("Invalid left-hand for function definition: args");
+                        //String::new() // placeholder, won't be used if `args_are_syms` is `false`
+                    })
+                    .collect();
+
+                let name = name.unwrap();
+                
+                return Expr::Assign(name, Box::new(Expr::Func(args, Box::new(self.parse_expr()))))
             }
         }
-        todo!()
+        
+        expr
     }
 
     fn parse_var(&mut self) -> Expr {
@@ -99,7 +129,7 @@ impl<'t> Parser<'t> {
                 }
             }
 
-            panic!("Invalid left-hand for assignment"); // TODO: Have actual error reporting
+            panic!("Invalid left-hand for assignment: var"); // TODO: Have actual error reporting
         }
 
         expr
