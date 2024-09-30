@@ -23,7 +23,7 @@ For `Set.enumerate`, I think we get a problem. Since `Real` is uncountable, we c
 
 For example, this would work:
 ```rs
-data Point = (Int, Int);
+data Point = [Int ^ 2]; // Same as [Real, Real]
 
 vals = Set.enumerate(Point)[0];
 ```
@@ -149,3 +149,52 @@ msg : [Char] = "Hello World"
 
 Types are Sets, Sets are Types.
 ```
+
+Little Change (9/30/2024) -- Tuples vs Lists and Matricies:
+```rs
+// Tuple
+origin : [Real^2]
+origin = [0, 0]
+
+mytup : [Real^3, Str, Bool^2]
+mytup = [-4.05, 1.0036, 0.209, "Hello World", false, true]
+
+// List
+// A list is actually a convenience form of a tuple, and in fact is only used in types
+// Essentially, it is a tuple with unknown size at write-time, but is still constant of course
+
+real_n : [Real]
+real_n = [1, 2, 3]
+
+real_n2 : [Real]
+real_n2 = [1, 2, 3, 4, 5, 6]
+
+// Matrix
+// A matrix can be created using semicolons to separate rows
+I : Mat(Real, 2)
+I = [1, 0; 0, 1]
+
+// A List of List can be created, but it doesn't have to be rectangular, so isn't a matrix necessarily
+
+A : [[Real]]
+A = [[1, 2, 3], [1, 2, 3, 4, 5]]
+
+// A list of tuples can be created as well
+lt : [[Int^2, Str]]
+lt = [[1, 2, "hi"], [0, 1, "bye"]]
+
+
+// or a tuple of tuples, etc.
+tt : [[Int^2], Str^2]
+tt = [[1, 2], "hi", "bye"]
+
+// The set power notation interacts with functions well
+f : Real^2 -> Real
+f(x, y) = x + y
+
+// as Set^N = x1 : Set, x2 : Set, ... xn : Set (No bounding structure)
+// Set^1 = Set
+// Set^0 = Empty
+// Set^negative is not defined
+```
+    
