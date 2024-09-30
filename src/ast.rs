@@ -30,5 +30,7 @@ pub enum Expr {
     Binary(Box<Expr>, Token, Box<Expr>),
     Call(Box<Expr>, Vec<Expr>),
     Assign(String, Box<Expr>),
-    Func(Vec<String>, Box<Expr>)
+    Func(Vec<String>, Box<Expr>),
+    List(Vec<Expr>),
+    Matrix(Vec<Vec<Expr>>)
 }

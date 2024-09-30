@@ -16,7 +16,7 @@ pub struct Parser<'t> {
 }
 
 impl<'t> Parser<'t> {
-    const KEYWORDS: [&'static str; 7] = ["do", "end", "data", "class", "object", "import", "as"];
+    const KEYWORDS: [&'static str; 8] = ["do", "end", "data", "class", "object", "import", "as", "proc"];
 
     pub fn new(tokens: &'t [Token]) -> Self {
         Self { 
@@ -67,15 +67,17 @@ impl<'t> Parser<'t> {
     }
 
     fn parse_expr(&mut self) -> Expr {
-        self.parse_func()
+        self.parse_assign()
     }
 
-    fn parse_func(&mut self) -> Expr {
+    fn parse_assign(&mut self) -> Expr {
         let expr = self.parse_or();
 
         if self.match_next(&[&TokenKind::Eq]) {
             self.next();
+            let right = self.parse_assign();
 
+            // Parse func: f(x, y, ...) = expr
             if let Expr::Call(left, args) = expr {
                 let name = if let Expr::Literal(val) = *left {
                     if let Val::Symbol(name) = val.val_move() {
@@ -88,7 +90,7 @@ impl<'t> Parser<'t> {
                 };
 
                 if name.is_none() {
-                    panic!("Invalid left-hand for function definition: name");
+                    panic!("Invalid left-hand for function definition: f name");
                 }
                 
                 let args = args
@@ -101,35 +103,24 @@ impl<'t> Parser<'t> {
                         }
 
                         // args_are_syms = false;
-                        panic!("Invalid left-hand for function definition: args");
+                        panic!("Invalid left-hand for function definition: f args");
                         //String::new() // placeholder, won't be used if `args_are_syms` is `false`
                     })
                     .collect();
 
                 let name = name.unwrap();
                 
-                return Expr::Assign(name, Box::new(Expr::Func(args, Box::new(self.parse_expr()))))
-            }
-        }
-        
-        expr
-    }
-
-    fn parse_var(&mut self) -> Expr {
-        let expr = self.parse_or();
-
-        if self.match_next(&[&TokenKind::Eq]) {
-            let op = self.current().clone();
-            self.next();
-            let value = self.parse_var();
-
-            if let Expr::Literal(val) = expr {
+                return Expr::Assign(name, Box::new(Expr::Func(args, Box::new(right))))
+            // Parse var: x = expr
+            } else if let Expr::Literal(val) = expr {
                 if let Val::Symbol(name) = val.val_move() {
-                    return Expr::Assign(name, Box::new(value));
+                    return Expr::Assign(name, Box::new(right));
                 }
+    
+                panic!("Invalid left-hand for assignment: var"); // TODO: Have actual error reporting
             }
 
-            panic!("Invalid left-hand for assignment: var"); // TODO: Have actual error reporting
+            panic!("Invalid left-hand for assignment"); // TODO: Have actual error reporting
         }
 
         expr
@@ -326,8 +317,10 @@ impl<'t> Parser<'t> {
         match self.current().kind() {
             TokenKind::Ident(lexeme) => return self.parse_ident(lexeme.clone()),
             TokenKind::String(lexeme) => return self.parse_string(lexeme.clone()),
+            TokenKind::Char(lexeme) => return self.parse_char(lexeme.clone()),
             TokenKind::Number(lexeme) => return self.parse_number(lexeme.clone()),
             TokenKind::OpenParen => return self.parse_grouping(),
+            TokenKind::OpenBracket => return self.parse_list(),
 
             _ => ()
         }
@@ -358,6 +351,15 @@ impl<'t> Parser<'t> {
             Value::new(
                 Val::String(lexeme), 
                 Type::Text(TText::str())
+            )
+        )
+    }
+
+    fn parse_char(&mut self, lexeme: String) -> Expr {
+        Expr::Literal(
+            Value::new(
+                Val::String(lexeme), 
+                Type::Text(TText::char())
             )
         )
     }
@@ -442,6 +444,61 @@ impl<'t> Parser<'t> {
         }
 
         Expr::Group(Box::new(expr))
+    }
+
+    fn parse_list(&mut self) -> Expr {
+        self.next();
+
+        let mut matrix_dim = None;
+        let mut result = Vec::new();
+        let mut list = Vec::new();
+
+        while self.current().kind() != &TokenKind::CloseBracket {
+            dbg!("test", &result, &list);
+            list.push(self.parse_expr());
+
+            if self.match_next(&[&TokenKind::Comma]) {
+                self.next();
+
+                continue
+            } else if self.match_next(&[&TokenKind::Semicolon]) {
+                if let None = matrix_dim {
+                    matrix_dim = Some((1usize, list.len()));
+                } else if let Some((r, c)) = matrix_dim {
+                    if c != list.len() {
+                        panic!("Each row of a matrix must have the same length: 1");
+                    }
+
+                    matrix_dim = Some((r + 1, c));
+                }
+                
+                result.push(list);
+                list = Vec::new();
+
+                self.next();
+                continue;
+            } else if self.match_next(&[&TokenKind::CloseBracket]) {
+                if let Some((r, c)) = matrix_dim {
+                    if c != list.len() {
+                        panic!("Each row of a matrix must have the same length: 2");
+                    }
+                    
+                    matrix_dim = Some((r + 1, c));
+                    result.push(list);
+                    list = Vec::new();
+                }
+            } else if self.match_next(&[&TokenKind::EOF]) {
+                panic!("Expected ']'.");
+            } else {
+                panic!("Expected ',', ';', or ']'.");
+            }
+        }
+
+        if let Some(_) = matrix_dim {
+            Expr::Matrix(result)
+        } else {
+            Expr::List(list)
+        }
     }
 
     /// Consumes next token if it matches the given [`TokenKind`]
