@@ -8,7 +8,9 @@ pub enum Error {
 
 #[derive(Debug)]
 pub enum LexError {
-    UnclosedString
+    UnclosedString,
+    UnclosedParenthesis,
+    UnclosedBracket
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
