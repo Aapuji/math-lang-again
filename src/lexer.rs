@@ -1,4 +1,4 @@
-use std::io::{self, BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, Read};
 
 use crate::{error::{self, Error, LexError}, token::{Token, TokenKind}};
 

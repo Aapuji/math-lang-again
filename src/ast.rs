@@ -25,6 +25,7 @@ pub enum Stmt {
 #[derive(Debug)]
 pub enum Expr {
     Literal(Box<dyn Val>),
+    Symbol(String),
     Group(Box<Expr>),
     Unary(Token, Box<Expr>),
     Binary(Box<Expr>, Token, Box<Expr>),

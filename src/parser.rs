@@ -1,13 +1,10 @@
 use core::panic;
-use std::fmt::Arguments;
-
-use num::bigint::Sign;
-use num::{BigInt, BigRational, Complex, FromPrimitive};
+use num::{BigInt, BigRational, Complex, Zero};
 
 use crate::ast::{Ast, Expr, Stmt};
 use crate::token::{Token, TokenKind};
 use crate::types::{TNum, TText, Type};
-use crate::value::{Val, Value};
+use crate::value::Val;
 
 pub struct Parser<'t> {
     tokens: &'t [Token],
@@ -79,12 +76,8 @@ impl<'t> Parser<'t> {
 
             // Parse func: f(x, y, ...) = expr
             if let Expr::Call(left, args) = expr {
-                let name = if let Expr::Literal(val) = *left {
-                    if let Val::Symbol(name) = val.val_move() {
-                        Some(name)
-                    } else {
-                        None
-                    }
+                let name = if let Expr::Symbol(name) = *left {
+                    Some(name)
                 } else {
                     None
                 };
@@ -96,10 +89,8 @@ impl<'t> Parser<'t> {
                 let args = args
                     .into_iter()
                     .map(|a| {
-                        if let Expr::Literal(val) = a {
-                            if let Val::Symbol(arg) = val.val_move() {
-                                return arg;
-                            }
+                        if let Expr::Symbol(arg) = a {
+                            return arg;
                         }
 
                         // args_are_syms = false;
@@ -112,12 +103,8 @@ impl<'t> Parser<'t> {
                 
                 return Expr::Assign(name, Box::new(Expr::Func(args, Box::new(right))))
             // Parse var: x = expr
-            } else if let Expr::Literal(val) = expr {
-                if let Val::Symbol(name) = val.val_move() {
-                    return Expr::Assign(name, Box::new(right));
-                }
-    
-                panic!("Invalid left-hand for assignment: var"); // TODO: Have actual error reporting
+            } else if let Expr::Symbol(name) = expr {
+                return Expr::Assign(name, Box::new(right));
             }
 
             panic!("Invalid left-hand for assignment"); // TODO: Have actual error reporting
@@ -331,37 +318,24 @@ impl<'t> Parser<'t> {
     fn parse_ident(&mut self, lexeme: String) -> Expr {
         if &lexeme == "i" {
             Expr::Literal(
-                Value::new(
-                    Val::Complex(Complex::new(BigRational::from(BigInt::from(0)), BigRational::from(BigInt::from(1)))),
-                    Type::Num(TNum::complex())
+                Box::new(
+                    Complex::<BigRational>::new(
+                        BigRational::from(BigInt::from(0)), 
+                        BigRational::from(BigInt::from(1))
+                    )
                 )
             )
         } else {
-            Expr::Literal(
-                Value::new(
-                    Val::Symbol(lexeme),
-                    Type::Symbol
-                )
-            )
+            Expr::Symbol(lexeme)
         }
     }
 
     fn parse_string(&mut self, lexeme: String) -> Expr {
-        Expr::Literal(
-            Value::new(
-                Val::String(lexeme), 
-                Type::Text(TText::str())
-            )
-        )
+        Expr::Literal(Box::new(lexeme))
     }
 
     fn parse_char(&mut self, lexeme: String) -> Expr {
-        Expr::Literal(
-            Value::new(
-                Val::String(lexeme), 
-                Type::Text(TText::char())
-            )
-        )
+        Expr::Literal(Box::new(lexeme)) // todo, make `struct Char(String)` struct to hold chars
     }
 
     fn parse_number(&mut self, mut l1: String) -> Expr {
@@ -383,34 +357,16 @@ impl<'t> Parser<'t> {
                     l1.push_str(&l2);
                     self.next();
 
-                    Expr::Literal(
-                        Value::new(
-                            Val::Decimal(
-                                BigRational::new(l1.parse().unwrap(), getlen(&l2))),
-                            Type::Num(TNum::real())
-                        )
-                    )
+                    Expr::Literal(Box::new(BigRational::new(l1.parse().unwrap(), getlen(&l2))))
                 } else {
-                    Expr::Literal(
-                        Value::new(
-                            Val::Int(l1.parse().unwrap()), 
-                            Type::Num(TNum::int())
-                    ))
+                    Expr::Literal(Box::new(l1.parse::<BigInt>().unwrap()))
                 }
             } else {
-                Expr::Literal(
-                    Value::new(
-                        Val::Int(l1.parse().unwrap()), 
-                        Type::Num(TNum::int())
-                ))
+                Expr::Literal(Box::new(l1.parse::<BigInt>().unwrap()))
             }
         // Int (eg. 1234)
         } else {
-            Expr::Literal(
-                Value::new(
-                    Val::Int(l1.parse().unwrap()), 
-                    Type::Num(TNum::int())
-            ))
+            Expr::Literal(Box::new(l1.parse::<BigInt>().unwrap()))
         };
 
 
@@ -420,13 +376,15 @@ impl<'t> Parser<'t> {
                 _ => unreachable!()
             };
             
-            let new_val = match val.val_move() {
-                Val::Int(x) => Val::Complex(Complex::new(BigRational::from(BigInt::from(0)), x.into())),
-                Val::Decimal(x) => Val::Complex(Complex::new(BigRational::from(BigInt::from(0)), x.into())),
-                _ => unreachable!()
+            let new_val = if let Some(bigint) = val.as_any().downcast_ref::<BigInt>() {
+                Complex::<BigRational>::new(BigRational::zero(), BigRational::from(bigint.to_owned()))
+            } else if let Some(bigrat) = val.as_any().downcast_ref::<BigRational>() {
+                Complex::<BigRational>::new(BigRational::zero(), bigrat.to_owned())
+            } else {
+                unreachable!()
             };
 
-            num = Expr::Literal(Value::new(new_val, Type::Num(TNum::complex())));
+            num = Expr::Literal(Box::new(new_val));
         }
 
         num
