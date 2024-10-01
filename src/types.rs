@@ -1,3 +1,7 @@
+use std::collections::HashSet;
+
+use crate::value::Val;
+
 use bitflags::bitflags;
 
 bitflags! {

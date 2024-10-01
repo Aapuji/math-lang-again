@@ -1,4 +1,4 @@
-use crate::{token::Token, value::Value};
+use crate::{token::Token, value::Val};
 
 #[derive(Debug)]
 pub struct Ast {
@@ -22,9 +22,9 @@ pub enum Stmt {
     Expr(Expr)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Expr {
-    Literal(Value),
+    Literal(Box<dyn Val>),
     Group(Box<Expr>),
     Unary(Token, Box<Expr>),
     Binary(Box<Expr>, Token, Box<Expr>),
