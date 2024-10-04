@@ -197,4 +197,25 @@ f(x, y) = x + y
 // Set^0 = Empty
 // Set^negative is not defined
 ```
+
+Little Change (10/3/2024) -- Arrays
+```rs
+// Now there will also be arrays in the language. However, an array is actually a list of values that is passed into an expression expecting a singular value, and executes the expression on each value of the array and outputs that.
+
+f : Int -> Int
+f(n) = n^2 - sin(pi/4 * n) + e^(1-e^-abs(x))
+
+// On way
+values_1 = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+results_1 = Iter.map(values_1, f)
+
+// Other way
+values_2 = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+results_2 : [_] = f(#array values_2)
+
+// To create an array, use the #array macro
+
+// This is also how the +/- and -/+ operators work
+y = (-1 +/- sqrt(10)) / 2 -/+ 1/2 // y = #array [(-2 + sqrt10) / 2, (-sqrt10)/2]
+```
     

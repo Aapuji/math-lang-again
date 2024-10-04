@@ -1,10 +1,8 @@
 use core::panic;
 use num::{BigInt, BigRational, Complex, Zero};
 
-use crate::ast::{Ast, Expr, Stmt};
+use crate::ast::{Ast, expr::*, stmt::*};
 use crate::token::{Token, TokenKind};
-use crate::types::{TNum, TText, Type};
-use crate::value::Val;
 
 pub struct Parser<'t> {
     tokens: &'t [Token],
@@ -42,13 +40,13 @@ impl<'t> Parser<'t> {
         ast
     }
 
-    fn parse_stmt(&mut self) -> Stmt {        
+    fn parse_stmt(&mut self) -> Box<dyn Stmt> {        
         let res = self.parse_expr_stmt();
 
         res
     }
 
-    fn parse_expr_stmt(&mut self) -> Stmt {
+    fn parse_expr_stmt(&mut self) -> Box<dyn Stmt> {
         let expr = self.parse_expr();
 
         if self.match_next(&[&TokenKind::EOL]) {
@@ -60,14 +58,14 @@ impl<'t> Parser<'t> {
             ()
         }
 
-        Stmt::Expr(expr)
+        Box::new(ExprStmt(expr))
     }
 
-    fn parse_expr(&mut self) -> Expr {
+    fn parse_expr(&mut self) -> Box<dyn Expr> {
         self.parse_assign()
     }
 
-    fn parse_assign(&mut self) -> Expr {
+    fn parse_assign(&mut self) -> Box<dyn Expr> {
         let expr = self.parse_or();
 
         if self.match_next(&[&TokenKind::Eq]) {
@@ -75,8 +73,8 @@ impl<'t> Parser<'t> {
             let right = self.parse_assign();
 
             // Parse func: f(x, y, ...) = expr
-            if let Expr::Call(left, args) = expr {
-                let name = if let Expr::Symbol(name) = *left {
+            if let Some(Call(left, args)) = expr.downcast_ref() {
+                let name = if let Some(Symbol(name)) = left.downcast_ref() {
                     Some(name)
                 } else {
                     None
@@ -89,8 +87,8 @@ impl<'t> Parser<'t> {
                 let args = args
                     .into_iter()
                     .map(|a| {
-                        if let Expr::Symbol(arg) = a {
-                            return arg;
+                        if let Some(Symbol(arg)) = a.downcast_ref() {
+                            return Symbol(arg.clone());
                         }
 
                         // args_are_syms = false;
@@ -101,10 +99,10 @@ impl<'t> Parser<'t> {
 
                 let name = name.unwrap();
                 
-                return Expr::Assign(name, Box::new(Expr::Func(args, Box::new(right))))
+                return Box::new(Assign(Symbol(name.clone()), Box::new(Func(args, right))))
             // Parse var: x = expr
-            } else if let Expr::Symbol(name) = expr {
-                return Expr::Assign(name, Box::new(right));
+            } else if let Some(Symbol(name)) = expr.downcast_ref() {
+                return Box::new(Assign(Symbol(name.clone()), right));
             }
 
             panic!("Invalid left-hand for assignment"); // TODO: Have actual error reporting
@@ -113,7 +111,7 @@ impl<'t> Parser<'t> {
         expr
     }
 
-    fn parse_or(&mut self) -> Expr {
+    fn parse_or(&mut self) -> Box<dyn Expr> {
         let mut expr = self.parse_and();
 
         while self.match_next(&[&TokenKind::DblBar]) {
@@ -122,13 +120,13 @@ impl<'t> Parser<'t> {
 
             let right = self.parse_and();
 
-            expr = Expr::Binary(Box::new(expr), op, Box::new(right));
+            expr = Box::new(Binary(expr, op, right));
         }
 
         expr
     }
 
-    fn parse_and(&mut self) -> Expr {
+    fn parse_and(&mut self) -> Box<dyn Expr> {
         let mut expr = self.parse_comp();
 
         while self.match_next(&[&TokenKind::DblAmp]) {
@@ -137,7 +135,7 @@ impl<'t> Parser<'t> {
 
             let right = self.parse_comp();
 
-            expr = Expr::Binary(Box::new(expr), op, Box::new(right));
+            expr = Box::new(Binary(expr, op, right));
         }
 
         expr
@@ -145,7 +143,7 @@ impl<'t> Parser<'t> {
 
     // TODO: Have it allow for a < b < c.
     // Perhaps in another pass? As it will have to check if the type implements the Ord class rather than just PartialOrd.
-    fn parse_comp(&mut self) -> Expr {
+    fn parse_comp(&mut self) -> Box<dyn Expr> {
         let mut expr = self.parse_set_comp();
 
         while self.match_next(&[
@@ -158,13 +156,13 @@ impl<'t> Parser<'t> {
 
             let right = self.parse_set_comp();
 
-            expr = Expr::Binary(Box::new(expr), op, Box::new(right));
+            expr = Box::new(Binary(expr, op, right));
         }
 
         expr
     }
 
-    fn parse_set_comp(&mut self) -> Expr {
+    fn parse_set_comp(&mut self) -> Box<dyn Expr> {
         let mut expr = self.parse_set_ops();
 
         while self.match_next(&[
@@ -177,13 +175,13 @@ impl<'t> Parser<'t> {
 
             let right = self.parse_set_ops();
 
-            expr = Expr::Binary(Box::new(expr), op, Box::new(right));
+            expr = Box::new(Binary(expr, op, right));
         }
 
         expr
     }
 
-    fn parse_set_ops(&mut self) -> Expr {
+    fn parse_set_ops(&mut self) -> Box<dyn Expr> {
         let mut expr = self.parse_term();
 
         while self.match_next(&[&TokenKind::Amp, &TokenKind::Bar, &TokenKind::BackSlash]) {
@@ -192,13 +190,13 @@ impl<'t> Parser<'t> {
 
             let right = self.parse_term();
 
-            expr = Expr::Binary(Box::new(expr), op, Box::new(right));
+            expr = Box::new(Binary(expr, op, right));
         }
 
         expr
     }
 
-    fn parse_term(&mut self) -> Expr {
+    fn parse_term(&mut self) -> Box<dyn Expr> {
         let mut expr = self.parse_factor();
 
         while self.match_next(&[&TokenKind::Plus, &TokenKind::Minus]) {
@@ -207,13 +205,13 @@ impl<'t> Parser<'t> {
 
             let right = self.parse_factor();
 
-            expr = Expr::Binary(Box::new(expr), op, Box::new(right));
+            expr = Box::new(Binary(expr, op, right));
         }
 
         expr
     }
 
-    fn parse_factor(&mut self) -> Expr {
+    fn parse_factor(&mut self) -> Box<dyn Expr> {
         let mut expr = self.parse_unary();
 
         while self.match_next(&[&TokenKind::Slash, &TokenKind::Star]) {
@@ -222,13 +220,13 @@ impl<'t> Parser<'t> {
 
             let right = self.parse_unary();
 
-            expr = Expr::Binary(Box::new(expr), op, Box::new(right));
+            expr = Box::new(Binary(expr, op, right));
         }
 
         expr
     }
 
-    fn parse_unary(&mut self) -> Expr {
+    fn parse_unary(&mut self) -> Box<dyn Expr> {
         match self.current().kind() {
             TokenKind::Bang  |
             TokenKind::Minus |
@@ -239,13 +237,13 @@ impl<'t> Parser<'t> {
 
                 let right = self.parse_unary();
 
-                return Expr::Unary(op, Box::new(right));
+                return Box::new(Unary(op, right));
             }
             _ => self.parse_power()
         }
     }
 
-    fn parse_power(&mut self) -> Expr {
+    fn parse_power(&mut self) -> Box<dyn Expr> {
         let mut expr = self.parse_call();
 
         if self.match_next(&[&TokenKind::Caret]) {
@@ -253,13 +251,13 @@ impl<'t> Parser<'t> {
             self.next();
 
             let right = self.parse_power();
-            expr = Expr::Binary(Box::new(expr), op, Box::new(right));
+            expr = Box::new(Binary(expr, op, right));
         }
 
         expr 
     }
 
-    fn parse_call(&mut self) -> Expr {
+    fn parse_call(&mut self) -> Box<dyn Expr> {
         let mut expr = self.parse_primary();
 
         loop {
@@ -273,7 +271,7 @@ impl<'t> Parser<'t> {
         expr
     }
 
-    fn finish_call(&mut self, callee: Expr) -> Expr {
+    fn finish_call(&mut self, callee: Box<dyn Expr>) -> Box<dyn Expr> {
         let mut args = vec![];
 
         if !matches!(self.current().kind(), &TokenKind::EOF) {
@@ -297,10 +295,10 @@ impl<'t> Parser<'t> {
             panic!("Expected ')' after arguments.");
         }
 
-        Expr::Call(Box::new(callee), args)
+        Box::new(Call(callee, args))
     }
 
-    fn parse_primary(&mut self) -> Expr {
+    fn parse_primary(&mut self) -> Box<dyn Expr> {
         match self.current().kind() {
             TokenKind::Ident(lexeme) => return self.parse_ident(lexeme.clone()),
             TokenKind::String(lexeme) => return self.parse_string(lexeme.clone()),
@@ -315,30 +313,36 @@ impl<'t> Parser<'t> {
         panic!("Expected expression") // Todo: change for actual error handling
     }
 
-    fn parse_ident(&mut self, lexeme: String) -> Expr {
+    fn parse_ident(&mut self, lexeme: String) -> Box<dyn Expr> {
         if &lexeme == "i" {
-            Expr::Literal(
+            Box::new(Literal(
                 Box::new(
                     Complex::<BigRational>::new(
                         BigRational::from(BigInt::from(0)), 
                         BigRational::from(BigInt::from(1))
                     )
                 )
-            )
+            ))
+        } else if lexeme == "true" {
+            Box::new(Literal(Box::new(true)))
+        } else if lexeme == "false" {
+            Box::new(Literal(Box::new(false)))
+        } else if let Some(&keyword) = Self::KEYWORDS.iter().find(|&k| k == &lexeme) {
+            Box::new(Keyword(keyword.to_owned()))
         } else {
-            Expr::Symbol(lexeme)
+            Box::new(Symbol(lexeme))
         }
     }
 
-    fn parse_string(&mut self, lexeme: String) -> Expr {
-        Expr::Literal(Box::new(lexeme))
+    fn parse_string(&mut self, lexeme: String) -> Box<dyn Expr> {
+        Box::new(Literal(Box::new(lexeme)))
     }
 
-    fn parse_char(&mut self, lexeme: String) -> Expr {
-        Expr::Literal(Box::new(lexeme)) // todo, make `struct Char(String)` struct to hold chars
+    fn parse_char(&mut self, lexeme: String) -> Box<dyn Expr> {
+        Box::new(Literal(Box::new(lexeme))) // todo, make `struct Char(String)` struct to hold chars
     }
 
-    fn parse_number(&mut self, mut l1: String) -> Expr {
+    fn parse_number(&mut self, mut l1: String) -> Box<dyn Expr> {
         // Decimal (eg. 12.34)
         let mut num = if self.match_next(&[&TokenKind::Dot]) {
             fn getlen(s: &str) -> BigInt {
@@ -357,22 +361,22 @@ impl<'t> Parser<'t> {
                     l1.push_str(&l2);
                     self.next();
 
-                    Expr::Literal(Box::new(BigRational::new(l1.parse().unwrap(), getlen(&l2))))
+                    Box::new(Literal(Box::new(BigRational::new(l1.parse().unwrap(), getlen(&l2)))))
                 } else {
-                    Expr::Literal(Box::new(l1.parse::<BigInt>().unwrap()))
+                    Box::new(Literal(Box::new(l1.parse::<BigInt>().unwrap())))
                 }
             } else {
-                Expr::Literal(Box::new(l1.parse::<BigInt>().unwrap()))
+                Box::new(Literal(Box::new(l1.parse::<BigInt>().unwrap())))
             }
         // Int (eg. 1234)
         } else {
-            Expr::Literal(Box::new(l1.parse::<BigInt>().unwrap()))
+            Box::new(Literal(Box::new(l1.parse::<BigInt>().unwrap())))
         };
 
 
         if self.match_next(&[&TokenKind::Ident("i".to_owned())]) {
-            let val = match num {
-                Expr::Literal(v) => v,
+            let val = match *num {
+                Literal(v) => v,
                 _ => unreachable!()
             };
             
@@ -384,13 +388,13 @@ impl<'t> Parser<'t> {
                 unreachable!()
             };
 
-            num = Expr::Literal(Box::new(new_val));
+            num = Box::new(Literal(Box::new(new_val)));
         }
 
         num
     }
 
-    fn parse_grouping(&mut self) -> Expr {
+    fn parse_grouping(&mut self) -> Box<dyn Expr> {
         self.next();
 
         let expr = self.parse_expr();
@@ -401,10 +405,10 @@ impl<'t> Parser<'t> {
             panic!("Closing parenthesis expected");
         }
 
-        Expr::Group(Box::new(expr))
+        Box::new(Group(expr))
     }
 
-    fn parse_list(&mut self) -> Expr {
+    fn parse_list(&mut self) -> Box<dyn Expr> {
         self.next();
 
         let mut matrix_dim = None;
@@ -412,13 +416,13 @@ impl<'t> Parser<'t> {
         let mut list = Vec::new();
 
         while self.current().kind() != &TokenKind::CloseBracket {
-            dbg!("test", &result, &list);
             list.push(self.parse_expr());
 
             if self.match_next(&[&TokenKind::Comma]) {
                 self.next();
 
                 continue
+            // If sees semicolon, it creates matrix instead of list (tuple)
             } else if self.match_next(&[&TokenKind::Semicolon]) {
                 if let None = matrix_dim {
                     matrix_dim = Some((1usize, list.len()));
@@ -453,9 +457,9 @@ impl<'t> Parser<'t> {
         }
 
         if let Some(_) = matrix_dim {
-            Expr::Matrix(result)
+            Box::new(Matrix(result))
         } else {
-            Expr::List(list)
+            Box::new(Tuple(list))
         }
     }
 

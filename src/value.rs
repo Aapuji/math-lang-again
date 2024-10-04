@@ -1,17 +1,17 @@
 use std::any::Any;
 use std::collections::HashSet;
-use std::fmt::Debug;
+use std::fmt::{self, Debug, Display};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use num::{BigInt, BigRational, Complex};
 
-pub trait Val: Any + Debug {
+pub trait Val: Any + Debug + Display {
     fn compare(&self, other: &dyn Val) -> bool;
     fn hash_val(&self, state: &mut dyn Hasher);
     fn as_any(&self) -> &dyn Any;
 }
 
 impl dyn Val {
-    fn downcast_ref<T: Val>(&self) -> Option<&T> {
+    pub fn downcast_ref<T: Val>(&self) -> Option<&T> {
         self.as_any().downcast_ref::<T>()
     }
 }
@@ -123,6 +123,51 @@ impl Val for String {
     }
 }
 
+impl Val for bool {
+    fn compare(&self, other: &dyn Val) -> bool {
+        if let Some(other_bool) = other.downcast_ref::<bool>() {
+            *self && *other_bool
+        } else {
+            false
+        }
+    }
+
+    fn hash_val(&self, mut state: &mut dyn Hasher) {
+        self.hash(&mut state);
+    }
+    
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+#[derive(Debug)]
+pub struct Tuple(Vec<Box<dyn Val>>);
+
+impl fmt::Display for Tuple {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.0)
+    }
+}
+
+impl Val for Tuple {
+    fn compare(&self, other: &dyn Val) -> bool {
+        if let Some(other_vec) = other.downcast_ref::<Tuple>() {
+            self.0 == other_vec.0
+        } else {
+            false
+        }
+    }
+
+    fn hash_val(&self, mut state: &mut dyn Hasher) {
+        self.0.hash(&mut state);
+    }
+    
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
 pub trait Set: Val {
     fn is_finite(&self) -> bool;
     fn is_countable(&self) -> bool;
@@ -183,6 +228,12 @@ impl Hash for FiniteSet {
         // todo, add some extra stuff so that you can't just emulate it 
         // right now it hashes length, then values, then sorts
         // so yuo can emulate {{0, 1, 2}} as {3, 0, 1, 2}, and they should collide.
+    }
+}
+
+impl fmt::Display for FiniteSet {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.elements)
     }
 }
 

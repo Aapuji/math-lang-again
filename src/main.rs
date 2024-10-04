@@ -1,6 +1,7 @@
 mod ast;
 mod config;
 mod error;
+mod interpreter;
 mod lexer;
 mod parser;
 mod token;
@@ -10,6 +11,8 @@ mod value;
 use std::env;
 
 use config::{Config, Mode};
+use interpreter::Interpreter;
+// use interpreter::Interpreter;
 use lexer::Lexer;
 use parser::Parser;
 
@@ -22,11 +25,14 @@ fn main() {
 
         let tokens = lexer.lex().unwrap();
 
-        println!("tokens: {:#?}", tokens);
+        println!("{:?}", tokens);
 
         let mut parser = Parser::new(&tokens);
         let ast = parser.parse();
 
         println!("{:#?}", ast);
+
+        let mut interpreter = Interpreter::new(ast.stmts());
+        interpreter.interpret();
     }
 }
