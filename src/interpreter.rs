@@ -1,52 +1,50 @@
-use std::ops::Deref;
-use std::path::Display;
+use std::collections::HashMap;
+use num::{BigInt, BigRational, Complex};
 
-use num::{bigint, complex, BigInt, BigRational, Complex};
-
-use crate::ast::{Ast, expr::*, stmt::*};
-use crate::token::{Token, TokenKind};
+use crate::ast::{expr::*, stmt::*};
+use crate::token::TokenKind;
 use crate::value::Val;
 
-pub struct Interpreter<'t> {
-    stmts: &'t [Box<dyn Stmt>] 
+pub struct Interpreter {
+    symbols: HashMap<String, Box<dyn Val>>
 }
 
-impl<'t> Interpreter<'t> {
-    pub fn new(stmts: &'t [Box<dyn Stmt>]) -> Self {
+impl Interpreter {
+    pub fn new() -> Self {
         Self {
-            stmts
+            symbols: HashMap::new()
         }
     }
 
-    pub fn interpret(&mut self) {
-        for stmt in self.stmts {
+    pub fn interpret<'t>(&mut self, stmts: &'t [Box<dyn Stmt>]) {
+        for stmt in stmts {
             self.execute_stmt(stmt);
         }
     }
 
     pub fn execute_stmt(&mut self, stmt: &Box<dyn Stmt>) {
         if let Some(ExprStmt(expr)) = stmt.downcast_ref() {
-            println!("{}", Self::execute_expr(expr))
+            println!("{}", self.execute_expr(expr))
         } else {
             todo!()
         }
     }
 
-    pub fn execute_expr<'a>(expr: &'a Box<dyn Expr>) -> Box<dyn Val> {
+    pub fn execute_expr<'a>(&mut self, expr: &'a Box<dyn Expr>) -> Box<dyn Val> {
         if let Some(Literal(lit)) = expr.downcast_ref() {
             Self::execute_literal(lit)
         } else if let Some(Group(expr)) = expr.downcast_ref::<Group>() {
-            Self::execute_expr(expr)
+            self.execute_expr(expr)
         } else if let Some(Unary(op, right)) = expr.downcast_ref() {
-            let right = Self::execute_expr(right);
+            let right = self.execute_expr(right);
 
             match op.kind() {
                 &TokenKind::Minus => Self::execute_neg(&right),
                 _ => todo!()
             }
         } else if let Some(Binary(left, op, right)) = expr.downcast_ref() {
-            let left = Self::execute_expr(left);
-            let right = Self::execute_expr(right);
+            let left = self.execute_expr(left);
+            let right = self.execute_expr(right);
 
             match op.kind() {
                 &TokenKind::Plus    => Self::execute_sum(&left, &right),
@@ -55,6 +53,8 @@ impl<'t> Interpreter<'t> {
                 &TokenKind::Slash   => Self::execute_quot(&left, &right),
                 _ => todo!()
             }
+        } else if let Some(Assign(Symbol(name), right)) = expr.downcast_ref() {
+            self.execute_assign(name, right)
         } else {
             todo!()
         }
@@ -312,6 +312,18 @@ impl<'t> Interpreter<'t> {
             panic!("Cannot use division with booleans")
         } else {
             panic!("Cannot apply binary operator '/'.")
+        }
+    }
+
+    // In future, return a result of whether it assigned or not?
+    fn execute_assign(&mut self, name: &str, right: &Box<dyn Expr>) -> Box<dyn Val> {
+        if self.symbols.contains_key(name) {
+            panic!("Variables cannot be reassigned")
+        } else {
+            let right = self.execute_expr(right);
+            self.symbols.insert(name.to_owned(), (*right).clone_box());
+
+            (*self.symbols.get(name).unwrap()).clone()
         }
     }
 }

@@ -4,7 +4,7 @@ use std::fmt::{self, Debug, Display};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use num::{BigInt, BigRational, Complex};
 
-pub trait Val: Any + Debug + Display {
+pub trait Val: Any + Debug + Display + CloneBox {
     fn compare(&self, other: &dyn Val) -> bool;
     fn hash_val(&self, state: &mut dyn Hasher);
 
@@ -32,12 +32,6 @@ impl dyn Val {
     }
 }
 
-impl PartialEq for dyn Val {
-    fn eq(&self, other: &Self) -> bool {
-        self.compare(other)
-    }
-}
-
 impl Eq for dyn Val {}
 
 impl Hash for dyn Val {
@@ -46,12 +40,28 @@ impl Hash for dyn Val {
     }
 }
 
+pub trait CloneBox {
+    fn clone_box(&self) -> Box<dyn Val>;
+}
+
+impl<T> CloneBox for T
+where 
+    T: 'static + Val + Clone
+{
+    fn clone_box(&self) -> Box<dyn Val> {
+        Box::new(self.clone())
+    }
+}
+
 impl Clone for Box<dyn Val> {
     fn clone(&self) -> Self {
-        let mut target: Box<dyn Val> = Box::new(false);
-        Box::clone_into(&self, &mut target);
+        self.clone_box()
+    }
+}
 
-        target
+impl PartialEq for dyn Val {
+    fn eq(&self, other: &Self) -> bool {
+        self.compare(other)
     }
 }
 

@@ -32,7 +32,7 @@ fn main() {
 
         // println!("{:#?}", ast);
 
-        let mut interpreter = Interpreter::new(ast.stmts());
-        interpreter.interpret();
+        let mut interpreter = Interpreter::new();
+        interpreter.interpret(ast.stmts());
     }
 }
