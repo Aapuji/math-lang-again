@@ -25,12 +25,12 @@ fn main() {
 
         let tokens = lexer.lex().unwrap();
 
-        println!("{:?}", tokens);
+        // println!("{:#?}", tokens);
 
         let mut parser = Parser::new(&tokens);
         let ast = parser.parse();
 
-        println!("{:#?}", ast);
+        // println!("{:#?}", ast);
 
         let mut interpreter = Interpreter::new(ast.stmts());
         interpreter.interpret();

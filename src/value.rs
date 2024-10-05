@@ -7,12 +7,28 @@ use num::{BigInt, BigRational, Complex};
 pub trait Val: Any + Debug + Display {
     fn compare(&self, other: &dyn Val) -> bool;
     fn hash_val(&self, state: &mut dyn Hasher);
+
+    fn is_num(&self) -> bool { false }
+    fn is_str(&self) -> bool { false }
+    fn is_tup(&self) -> bool { false }
+    fn is_mat(&self) -> bool { false }
+    fn is_set(&self) -> bool { false }
+
     fn as_any(&self) -> &dyn Any;
+    fn as_boxed_any(&self) -> Box<dyn Any>;
 }
 
 impl dyn Val {
     pub fn downcast_ref<T: Val>(&self) -> Option<&T> {
         self.as_any().downcast_ref::<T>()
+    }
+
+    pub fn downcast<T: Val>(&self) -> Result<Box<T>, Box<dyn Any>> {
+        self.as_boxed_any().downcast::<T>()
+    }
+
+    pub fn display(&self) -> String {
+        format!("{}", self)
     }
 }
 
@@ -27,6 +43,15 @@ impl Eq for dyn Val {}
 impl Hash for dyn Val {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.hash_val(state);
+    }
+}
+
+impl Clone for Box<dyn Val> {
+    fn clone(&self) -> Self {
+        let mut target: Box<dyn Val> = Box::new(false);
+        Box::clone_into(&self, &mut target);
+
+        target
     }
 }
 
@@ -56,8 +81,16 @@ impl Val for BigInt {
         Complex::<BigRational>::from(BigRational::from(self.clone())).hash(&mut state);
     }
 
+    fn is_num(&self) -> bool {
+        true
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn as_boxed_any(&self) -> Box<dyn Any> {
+        Box::new(self.to_owned())
     }
 }
 
@@ -78,8 +111,16 @@ impl Val for BigRational {
         Complex::<BigRational>::from(self.clone()).hash(&mut state);
     }
 
+    fn is_num(&self) -> bool {
+        true
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn as_boxed_any(&self) -> Box<dyn Any> {
+        Box::new(self.to_owned())
     }
 }
 
@@ -100,8 +141,16 @@ impl Val for Complex<BigRational> {
         self.hash(&mut state);
     }
 
+    fn is_num(&self) -> bool {
+        true
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn as_boxed_any(&self) -> Box<dyn Any> {
+        Box::new(self.to_owned())
     }
 }
 
@@ -118,8 +167,16 @@ impl Val for String {
         self.hash(&mut state);
     }
 
+    fn is_str(&self) -> bool {
+        true
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn as_boxed_any(&self) -> Box<dyn Any> {
+        Box::new(self.to_owned())
     }
 }
 
@@ -139,9 +196,13 @@ impl Val for bool {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn as_boxed_any(&self) -> Box<dyn Any> {
+        Box::new(self.to_owned())
+    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Tuple(Vec<Box<dyn Val>>);
 
 impl fmt::Display for Tuple {
@@ -162,9 +223,17 @@ impl Val for Tuple {
     fn hash_val(&self, mut state: &mut dyn Hasher) {
         self.0.hash(&mut state);
     }
+
+    fn is_tup(&self) -> bool {
+        true
+    }
     
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn as_boxed_any(&self) -> Box<dyn Any> {
+        Box::new(self.to_owned())
     }
 }
 
@@ -176,7 +245,7 @@ pub trait Set: Val {
 /// A finite set that holds all of its elements
 /// 
 /// It saves its hash on creation, as all values are immutable so it will never change. That way it doesn't have to rehash every time it needs a hash.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FiniteSet {
     elements: HashSet<Box<dyn Val>>,
     hash: u64
@@ -251,8 +320,16 @@ impl Val for FiniteSet {
         state.write_u64(self.hash);
     }
 
+    fn is_mat(&self) -> bool {
+        true
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn as_boxed_any(&self) -> Box<dyn Any> {
+        Box::new(self.to_owned())
     }
 }
 
@@ -265,19 +342,3 @@ impl Set for FiniteSet {
         true
     }
 }
-
-
-
-
-
-// Represents the internal representation of a value
-// #[derive(Debug, Clone)]
-// pub enum Val {
-//     Int(BigInt),
-//     Decimal(BigRational),
-//     Complex(Complex<BigRational>),
-//     String(String),
-//     Symbol(String) // perhaps have a table to map an ident to a number and then use that number to refer it??
-// }
-
-// Todo, values with different Vals (like Uint 100 vs Int 100) are the same value, but are different in internals. So hashing will be different, so there has to be a preliminary step.

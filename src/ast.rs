@@ -87,7 +87,6 @@ pub mod expr {
         impl Expr for 
             Literal(Box<dyn Val>),
             Symbol(String),
-            Keyword(String),
             Group(Box<dyn Expr>),
             Unary(Token, Box<dyn Expr>),
             Binary(Box<dyn Expr>, Token, Box<dyn Expr>),

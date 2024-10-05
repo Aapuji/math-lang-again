@@ -299,18 +299,16 @@ impl<'t> Parser<'t> {
     }
 
     fn parse_primary(&mut self) -> Box<dyn Expr> {
-        match self.current().kind() {
-            TokenKind::Ident(lexeme) => return self.parse_ident(lexeme.clone()),
-            TokenKind::String(lexeme) => return self.parse_string(lexeme.clone()),
-            TokenKind::Char(lexeme) => return self.parse_char(lexeme.clone()),
-            TokenKind::Number(lexeme) => return self.parse_number(lexeme.clone()),
-            TokenKind::OpenParen => return self.parse_grouping(),
-            TokenKind::OpenBracket => return self.parse_list(),
-
-            _ => ()
+        return match self.current().kind() {
+            TokenKind::Ident(lexeme) => self.parse_ident(lexeme.clone()),
+            TokenKind::String(lexeme) => self.parse_string(lexeme.clone()),
+            TokenKind::Char(lexeme) => self.parse_char(lexeme.clone()),
+            TokenKind::Number(lexeme) => self.parse_number(lexeme.clone()),
+            TokenKind::OpenParen => self.parse_grouping(),
+            TokenKind::OpenBracket => self.parse_list(),
+            
+            _ => panic!("Expected expression {:#?}", &self.tokens[self.i..]) // Todo: change for actual error handling
         }
-
-        panic!("Expected expression") // Todo: change for actual error handling
     }
 
     fn parse_ident(&mut self, lexeme: String) -> Box<dyn Expr> {
@@ -328,7 +326,8 @@ impl<'t> Parser<'t> {
         } else if lexeme == "false" {
             Box::new(Literal(Box::new(false)))
         } else if let Some(&keyword) = Self::KEYWORDS.iter().find(|&k| k == &lexeme) {
-            Box::new(Keyword(keyword.to_owned()))
+            todo!()
+            // Box::new(Keyword(keyword.to_owned()))
         } else {
             Box::new(Symbol(lexeme))
         }
