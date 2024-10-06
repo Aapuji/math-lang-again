@@ -3,16 +3,32 @@ use num::{BigInt, BigRational, Complex};
 
 use crate::ast::{expr::*, stmt::*};
 use crate::token::TokenKind;
-use crate::value::Val;
+use crate::value::{Tuple, Val};
+
+struct State {
+    symbols: HashMap<String, Box<dyn Val>>
+}
+
+impl State {
+    pub fn new() -> Self {
+        let mut map = HashMap::new();
+
+        map.insert(String::from("arr"), Box::new(BigInt::from(1)));
+
+        Self {
+            symbols: HashMap::new()
+        }
+    }
+}
 
 pub struct Interpreter {
-    symbols: HashMap<String, Box<dyn Val>>
+    state: State
 }
 
 impl Interpreter {
     pub fn new() -> Self {
         Self {
-            symbols: HashMap::new()
+            state: State::new()
         }
     }
 
@@ -33,6 +49,12 @@ impl Interpreter {
     pub fn execute_expr<'a>(&mut self, expr: &'a Box<dyn Expr>) -> Box<dyn Val> {
         if let Some(Literal(lit)) = expr.downcast_ref() {
             Self::execute_literal(lit)
+        } else if let Some(Symbol(name)) = expr.downcast_ref() {
+            if self.state.symbols.contains_key(name) {
+                (*self.state.symbols.get(name).unwrap()).clone()
+            } else {
+                panic!("Variable {name} is not defined");
+            }
         } else if let Some(Group(expr)) = expr.downcast_ref::<Group>() {
             self.execute_expr(expr)
         } else if let Some(Unary(op, right)) = expr.downcast_ref() {
@@ -53,6 +75,11 @@ impl Interpreter {
                 &TokenKind::Slash   => Self::execute_quot(&left, &right),
                 _ => todo!()
             }
+        // } else if let Some(expr::Tuple(exprs)) = expr.downcast_ref() {
+        //     Box::new(Tuple(exprs
+        //         .iter()
+        //         .map(|expr| self.execute_expr(expr))
+        //         .collect::<Vec<Box<dyn Val>>>()))
         } else if let Some(Assign(Symbol(name), right)) = expr.downcast_ref() {
             self.execute_assign(name, right)
         } else {
@@ -317,13 +344,13 @@ impl Interpreter {
 
     // In future, return a result of whether it assigned or not?
     fn execute_assign(&mut self, name: &str, right: &Box<dyn Expr>) -> Box<dyn Val> {
-        if self.symbols.contains_key(name) {
+        if self.state.symbols.contains_key(name) {
             panic!("Variables cannot be reassigned")
         } else {
             let right = self.execute_expr(right);
-            self.symbols.insert(name.to_owned(), (*right).clone_box());
+            self.state.symbols.insert(name.to_owned(), (*right).clone_box());
 
-            (*self.symbols.get(name).unwrap()).clone()
+            (*self.state.symbols.get(name).unwrap()).clone()
         }
     }
 }

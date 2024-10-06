@@ -103,7 +103,17 @@ impl<'t> Lexer<'t> {
 
             match ch {
                 '+' => self.add_token(tokens, TokenKind::Plus),
-                '-' => self.add_token(tokens, TokenKind::Minus),
+                '-' => {
+                    let n = next();
+                    
+                    if let Some('>') = n {
+                        self.add_token(tokens, TokenKind::SmallArrow);
+                    } else {
+                        self.add_token(tokens, TokenKind::Minus);
+                        
+                        continue;
+                    }
+                }
                 '*' => {
                     self.add_token(tokens, TokenKind::Star)
                 },
@@ -142,6 +152,8 @@ impl<'t> Lexer<'t> {
                         self.add_token(tokens, TokenKind::DblEq);
                     } else if let Some(':') = n {
                         self.add_token(tokens, TokenKind::EqColon);
+                    } else if let Some('>') = n {
+                        self.add_token(tokens, TokenKind::FatArrow);
                     } else {
                         self.add_token(tokens, TokenKind::Eq);
                         continue;

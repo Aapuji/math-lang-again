@@ -65,6 +65,19 @@ impl<'t> Parser<'t> {
         self.parse_assign()
     }
 
+    fn validate_args(&self, args: &[Box<dyn Expr>]) -> Vec<Symbol> {
+        args
+            .into_iter()
+            .map(|a| {
+                if let Some(Symbol(arg)) = a.downcast_ref() {
+                    return Symbol(arg.clone());
+                }
+
+                panic!("Invalid left-hand for function definition: f args");
+            })
+            .collect()
+    }
+
     fn parse_assign(&mut self) -> Box<dyn Expr> {
         let expr = self.parse_or();
 
@@ -84,22 +97,9 @@ impl<'t> Parser<'t> {
                     panic!("Invalid left-hand for function definition: f name");
                 }
                 
-                let args = args
-                    .into_iter()
-                    .map(|a| {
-                        if let Some(Symbol(arg)) = a.downcast_ref() {
-                            return Symbol(arg.clone());
-                        }
-
-                        // args_are_syms = false;
-                        panic!("Invalid left-hand for function definition: f args");
-                        //String::new() // placeholder, won't be used if `args_are_syms` is `false`
-                    })
-                    .collect();
-
-                let name = name.unwrap();
+                let args = self.validate_args(args);
                 
-                return Box::new(Assign(Symbol(name.clone()), Box::new(Func(args, right))))
+                return Box::new(Assign(Symbol(name.unwrap().clone()), Box::new(Func(args, right))))
             // Parse var: x = expr
             } else if let Some(Symbol(name)) = expr.downcast_ref() {
                 return Box::new(Assign(Symbol(name.clone()), right));
@@ -110,6 +110,43 @@ impl<'t> Parser<'t> {
 
         expr
     }
+
+    // fn parse_arrow(&mut self) -> Box<dyn Expr> {
+    //     let mut is_func = false;
+    //     let mut args = Vec::new();
+        
+    //     if self.match_next(&[&TokenKind::OpenParen]) {
+    //         let dummy: Box<dyn Expr> = Box::new(Symbol(String::new()));
+    
+    //         let call = self.finish_call(dummy);
+
+    //         if let Some(Call(_, inner_args)) = call.downcast_ref() {
+    //             args = self.validate_args(inner_args);
+    //             is_func = true;
+    //         } else {
+    //             unreachable!()
+    //         }
+    //     } else if let Some(tok) = self.peek() {
+    //         if let TokenKind::Ident(name) = tok.kind() {
+    //             args = vec![Symbol(name.to_owned())];
+    //             is_func = true;
+    //         }
+    //     }
+
+    //     if self.match_next(&[&TokenKind::SmallArrow]) {
+    //         if is_func {
+    //             Box::new(Func(args, self.parse_expr()))
+    //         } else {
+    //             panic!("Invalid left-hand arguments for '->'")
+    //         }
+    //     } else {
+    //         if is_func {
+    //             panic!("Expected expression, got arguments list instead")
+    //         } else {
+    //             self.parse_or()
+    //         }
+    //     }
+    // }
 
     fn parse_or(&mut self) -> Box<dyn Expr> {
         let mut expr = self.parse_and();
@@ -260,12 +297,8 @@ impl<'t> Parser<'t> {
     fn parse_call(&mut self) -> Box<dyn Expr> {
         let mut expr = self.parse_primary();
 
-        loop {
-            if self.match_next(&[&TokenKind::OpenParen]) {
-                expr = self.finish_call(expr);
-            } else {
-                break;
-            }
+        if self.match_next(&[&TokenKind::OpenParen]) {
+            expr = self.finish_call(expr);
         }
 
         expr
@@ -274,25 +307,29 @@ impl<'t> Parser<'t> {
     fn finish_call(&mut self, callee: Box<dyn Expr>) -> Box<dyn Expr> {
         let mut args = vec![];
 
-        if !matches!(self.current().kind(), &TokenKind::EOF) {
-            // A do-while loop
-            while {
-                if !self.match_next(&[&TokenKind::Comma]) {
-                    self.next();
-
-                    args.push(self.parse_expr());
-
-                    self.match_next(&[&TokenKind::Comma])
-                } else {
-                    true
+        // A do-while loop
+        while 'cond: {
+            if !self.match_next(&[&TokenKind::Comma]) {
+                if let Some(t) = self.peek() {
+                    if let &TokenKind::CloseParen = t.kind() {
+                        break 'cond false; // Not go to next iteraton of loop
+                    }
                 }
-            } {}
-        }
+
+                self.next();
+
+                args.push(self.parse_expr());
+
+                self.match_next(&[&TokenKind::Comma])
+            } else {
+                true
+            }
+        } {}
 
         if self.match_next(&[&TokenKind::CloseParen]) {
             ()
         } else {
-            panic!("Expected ')' after arguments.");
+            panic!("Expected ')' after arguments");
         }
 
         Box::new(Call(callee, args))
@@ -306,6 +343,7 @@ impl<'t> Parser<'t> {
             TokenKind::Number(lexeme) => self.parse_number(lexeme.clone()),
             TokenKind::OpenParen => self.parse_grouping(),
             TokenKind::OpenBracket => self.parse_list(),
+            TokenKind::OpenBrace => self.parse_set(),
             
             _ => panic!("Expected expression {:#?}", &self.tokens[self.i..]) // Todo: change for actual error handling
         }
@@ -325,7 +363,7 @@ impl<'t> Parser<'t> {
             Box::new(Literal(Box::new(true)))
         } else if lexeme == "false" {
             Box::new(Literal(Box::new(false)))
-        } else if let Some(&keyword) = Self::KEYWORDS.iter().find(|&k| k == &lexeme) {
+        } else if let Some(&_keyword) = Self::KEYWORDS.iter().find(|&k| k == &lexeme) {
             todo!()
             // Box::new(Keyword(keyword.to_owned()))
         } else {
@@ -449,9 +487,9 @@ impl<'t> Parser<'t> {
                     list = Vec::new();
                 }
             } else if self.match_next(&[&TokenKind::EOF]) {
-                panic!("Expected ']'.");
+                panic!("Expected ']'");
             } else {
-                panic!("Expected ',', ';', or ']'.");
+                panic!("Expected ',', ';', or ']'");
             }
         }
 
@@ -460,6 +498,32 @@ impl<'t> Parser<'t> {
         } else {
             Box::new(Tuple(list))
         }
+    }
+
+    fn parse_set(&mut self) -> Box<dyn Expr> {
+        self.next();
+
+        let mut values = Vec::new();
+
+        while self.current().kind() != &TokenKind::CloseBrace {
+            values.push(self.parse_expr());
+
+            if self.match_next(&[&TokenKind::Comma]) {
+                self.next();
+
+                continue
+            } else if self.match_next(&[&TokenKind::Semicolon]) {
+                panic!("Elements in a set must be separated by ','s not ';'s")
+            } else if self.match_next(&[&TokenKind::CloseBrace]) {
+                break
+            } else if self.match_next(&[&TokenKind::EOF]) {
+                panic!("Expected '}}'");
+            } else {
+                panic!("Expected ',' or '}}'");
+            }
+        }
+
+        Box::new(Set(values))
     }
 
     /// Consumes next token if it matches the given [`TokenKind`]

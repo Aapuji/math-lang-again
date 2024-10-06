@@ -1,8 +1,9 @@
 use std::any::Any;
-use std::collections::HashSet;
 use std::fmt::{self, Debug, Display};
-use std::hash::{DefaultHasher, Hash, Hasher};
+use std::hash::{Hash, Hasher};
 use num::{BigInt, BigRational, Complex};
+
+use crate::set::{Set, FiniteSet};
 
 pub trait Val: Any + Debug + Display + CloneBox {
     fn compare(&self, other: &dyn Val) -> bool;
@@ -213,7 +214,7 @@ impl Val for bool {
 }
 
 #[derive(Debug, Clone)]
-pub struct Tuple(Vec<Box<dyn Val>>);
+pub struct Tuple(pub Vec<Box<dyn Val>>);
 
 impl fmt::Display for Tuple {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -244,111 +245,5 @@ impl Val for Tuple {
 
     fn as_boxed_any(&self) -> Box<dyn Any> {
         Box::new(self.to_owned())
-    }
-}
-
-pub trait Set: Val {
-    fn is_finite(&self) -> bool;
-    fn is_countable(&self) -> bool;
-}
-
-/// A finite set that holds all of its elements
-/// 
-/// It saves its hash on creation, as all values are immutable so it will never change. That way it doesn't have to rehash every time it needs a hash.
-#[derive(Debug, Clone)]
-pub struct FiniteSet {
-    elements: HashSet<Box<dyn Val>>,
-    hash: u64
-}
-
-impl FiniteSet {
-    pub fn new(elements: HashSet<Box<dyn Val>>) -> Self {
-        let mut base = Self {
-            elements,
-            hash: 0
-        };
-
-        let mut state = DefaultHasher::new();
-        base.hash(&mut state);
-        base.hash = state.finish();
-
-        base
-    }
-}
-
-impl PartialEq for FiniteSet {
-    fn eq(&self, other: &Self) -> bool {
-        self.elements == other.elements
-    }
-}
-
-impl Hash for FiniteSet {
-    fn hash<H: Hasher>(&self, mut state: &mut H) {
-        // hash the length of the set
-        self.elements.len().hash(&mut state);
-
-        // Create a vector of hashes for the elements
-        let mut hashes: Vec<u64> = self.elements.iter()
-            .map(|item| {
-                let mut hasher = DefaultHasher::new();
-                item.hash(&mut hasher);
-                hasher.finish()
-            })
-            .collect();
-
-        // Sort hashes to ensure order indpendence
-        hashes.sort_unstable();
-
-        // Hash the sorted hashes of the elements
-        for h in hashes {
-            h.hash(&mut state);
-        }
-
-        // todo, add some extra stuff so that you can't just emulate it 
-        // right now it hashes length, then values, then sorts
-        // so yuo can emulate {{0, 1, 2}} as {3, 0, 1, 2}, and they should collide.
-    }
-}
-
-impl fmt::Display for FiniteSet {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self.elements)
-    }
-}
-
-impl Val for FiniteSet {
-    fn compare(&self, other: &dyn Val) -> bool {
-        if let Some(other_finite_set) = other.downcast_ref::<FiniteSet>() {
-            self == other_finite_set
-        } else {
-            false
-        }
-        
-    }
-
-    fn hash_val(&self, state: &mut dyn Hasher) {
-        state.write_u64(self.hash);
-    }
-
-    fn is_mat(&self) -> bool {
-        true
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_boxed_any(&self) -> Box<dyn Any> {
-        Box::new(self.to_owned())
-    }
-}
-
-impl Set for FiniteSet {
-    fn is_finite(&self) -> bool {
-        true
-    }
-
-    fn is_countable(&self) -> bool {
-        true
     }
 }

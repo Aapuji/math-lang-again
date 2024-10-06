@@ -4,6 +4,7 @@ mod error;
 mod interpreter;
 mod lexer;
 mod parser;
+mod set;
 mod token;
 mod types;
 mod value;
@@ -25,12 +26,12 @@ fn main() {
 
         let tokens = lexer.lex().unwrap();
 
-        // println!("{:#?}", tokens);
+        println!("{:#?}", tokens);
 
         let mut parser = Parser::new(&tokens);
         let ast = parser.parse();
 
-        // println!("{:#?}", ast);
+        println!("{:#?}", ast);
 
         let mut interpreter = Interpreter::new();
         interpreter.interpret(ast.stmts());

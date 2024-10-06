@@ -94,6 +94,7 @@ pub mod expr {
             Assign(Symbol, Box<dyn Expr>),
             Func(Vec<Symbol>, Box<dyn Expr>),
             Tuple(Vec<Box<dyn Expr>>),
-            Matrix(Vec<Vec<Box<dyn Expr>>>)
+            Matrix(Vec<Vec<Box<dyn Expr>>>),
+            Set(Vec<Box<dyn Expr>>) // store exprs in a vector, and turn into set when resolving values
     );
 }
