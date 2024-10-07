@@ -12,15 +12,24 @@ use crate::value::{Tuple, Val};
 #[derive(Debug, Clone)]
 enum SymStore {
     Value(Box<dyn Val>),
-    Type(Box<dyn Set>)
+    Type(Box<dyn Set>),
+    Alias(String)
 }
 
 impl SymStore {
     /// Returns if it is a subset of the given set.
-    fn subset_of(&self, set: &Box<dyn Set>) -> bool {
+    fn subset_of(&self, set: &Box<dyn Set>, symbols: &HashMap<String, Self>) -> bool {
         match self {
             Self::Value(value) => set.contains(value),
-            Self::Type(typeset) => typeset.is_subset(set)
+            Self::Type(typeset) => typeset.is_subset(set),
+            Self::Alias(name) => self.follow(symbols).subset_of(set, symbols)
+        }
+    }
+
+    fn follow<'a, 'b: 'a>(&'a self, symbols: &'b HashMap<String, Self>) -> &SymStore {
+        match self {
+            Self::Alias(name) => symbols.get(name).unwrap(),
+            _ => self
         }
     }
 }
