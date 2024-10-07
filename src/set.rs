@@ -5,15 +5,35 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 
 use crate::value::Val;
 
-pub trait Set: Val {
+pub trait Set: Val + CloneSet {
     fn is_finite(&self) -> bool;
     fn is_countable(&self) -> bool;
 
     /// Enumerates the set into values. If it cannot be enumerated, it returns [`None`].
     fn enumerate(&self) -> Option<Box<dyn Iterator<Item = &Box<dyn Val>> + '_>>;
     fn contains(&self, other: &Box<dyn Val>) -> bool;
-    /// Checks if `other` is a subset of `self` or they're equal.
-    fn is_subset(&self, other: &dyn Set) -> bool;
+
+    /// Checks if `self` is a subset of `other` or they're equal.
+    fn is_subset(&self, other: &Box<dyn Set>) -> bool;
+}
+
+pub trait CloneSet {
+    fn clone_set(&self) -> Box<dyn Set>;
+}
+
+impl<T> CloneSet for T
+where 
+    T: 'static + Set + Clone
+{
+    fn clone_set(&self) -> Box<dyn Set> {
+        Box::new(self.clone())
+    }
+}
+
+impl Clone for Box<dyn Set> {
+    fn clone(&self) -> Self {
+        self.clone_set()
+    }
 }
 
 /// A finite set that holds all of its elements
@@ -72,7 +92,20 @@ impl Hash for FiniteSet {
 
 impl fmt::Display for FiniteSet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self.elements)
+        write!(f, "{{")?;
+        
+        let mut i = self.elements.len();
+        for element in self.elements.iter() {
+            if i > 1 {
+                write!(f, "{}, ", element)?;
+            } else {
+                write!(f, "{}", element)?;
+            }
+
+            i -= 1;
+        }
+
+        write!(f, "}}")
     }
 }
 
@@ -112,7 +145,15 @@ impl Set for FiniteSet {
         true
     }
 
-    fn is_subset(&self, other: &dyn Set) -> bool {
+    fn enumerate(&self) -> Option<Box<dyn Iterator<Item = &Box<dyn Val>> + '_>> {
+        Some(Box::new(self.elements.iter()))
+     }
+
+    fn contains(&self, other: &Box<dyn Val>) -> bool {
+        self.elements.contains(other)
+    }
+
+    fn is_subset(&self, other: &Box<dyn Set>) -> bool {
         if other.is_countable() {
             self.enumerate().unwrap().all(|value| {
                 other.contains(value)
@@ -121,19 +162,11 @@ impl Set for FiniteSet {
             todo!()
         }
     }
-
-    fn contains(&self, other: &Box<dyn Val>) -> bool {
-        self.elements.contains(other)
-    }
-
-    fn enumerate(&self) -> Option<Box<dyn Iterator<Item = &Box<dyn Val>> + '_>> {
-       Some(Box::new(self.elements.iter()))
-    }
 }
 
 #[derive(Debug, Clone)]
 pub struct InfiniteStruct {
-    
+
     hash: u64
 }
 

@@ -3,8 +3,6 @@ use std::fmt::{self, Debug, Display};
 use std::hash::{Hash, Hasher};
 use num::{BigInt, BigRational, Complex};
 
-use crate::set::{Set, FiniteSet};
-
 pub trait Val: Any + Debug + Display + CloneBox {
     fn compare(&self, other: &dyn Val) -> bool;
     fn hash_val(&self, state: &mut dyn Hasher);
@@ -218,7 +216,20 @@ pub struct Tuple(pub Vec<Box<dyn Val>>);
 
 impl fmt::Display for Tuple {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self.0)
+        write!(f, "[")?;
+        
+        let mut i = self.0.len();
+        for element in self.0.iter() {
+            if i > 1 {
+                write!(f, "{}, ", element)?;
+            } else {
+                write!(f, "{}", element)?;
+            }
+
+            i -= 1;
+        }
+
+        write!(f, "]")
     }
 }
 

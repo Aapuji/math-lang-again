@@ -34,6 +34,7 @@ fn main() {
         println!("{:#?}", ast);
 
         let mut interpreter = Interpreter::new();
+        println!("{:?}", interpreter);
         interpreter.interpret(ast.stmts());
     }
 }

@@ -1,34 +1,39 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use num::{BigInt, BigRational, Complex};
 
-use crate::ast::{expr::*, stmt::*};
+use crate::ast::{expr, expr::*, stmt::*};
+use crate::set::{Set, FiniteSet};
 use crate::token::TokenKind;
 use crate::value::{Tuple, Val};
 
-struct State {
-    symbols: HashMap<String, Box<dyn Val>>
+/// What the symbol map stores.
+/// 
+/// If the type is initialized but not the value, then [`SymStore::Type`] is used, but once the value is declared, the type no longer matters, because the variable can't change, and thus [`SymStore::Value`] is enough (type is `{value}`).
+#[derive(Debug, Clone)]
+enum SymStore {
+    Value(Box<dyn Val>),
+    Type(Box<dyn Set>)
 }
 
-impl State {
-    pub fn new() -> Self {
-        let mut map = HashMap::new();
-
-        map.insert(String::from("arr"), Box::new(BigInt::from(1)));
-
-        Self {
-            symbols: HashMap::new()
+impl SymStore {
+    /// Returns if it is a subset of the given set.
+    fn subset_of(&self, set: &Box<dyn Set>) -> bool {
+        match self {
+            Self::Value(value) => set.contains(value),
+            Self::Type(typeset) => typeset.is_subset(set)
         }
     }
 }
 
+#[derive(Debug)]
 pub struct Interpreter {
-    state: State
+    symbols: HashMap<String, SymStore>
 }
 
 impl Interpreter {
     pub fn new() -> Self {
         Self {
-            state: State::new()
+            symbols: HashMap::new()
         }
     }
 
@@ -50,8 +55,8 @@ impl Interpreter {
         if let Some(Literal(lit)) = expr.downcast_ref() {
             Self::execute_literal(lit)
         } else if let Some(Symbol(name)) = expr.downcast_ref() {
-            if self.state.symbols.contains_key(name) {
-                (*self.state.symbols.get(name).unwrap()).clone()
+            if let Some(SymStore::Value(value)) = self.symbols.get(name) {
+                value.clone()
             } else {
                 panic!("Variable {name} is not defined");
             }
@@ -75,11 +80,13 @@ impl Interpreter {
                 &TokenKind::Slash   => Self::execute_quot(&left, &right),
                 _ => todo!()
             }
-        // } else if let Some(expr::Tuple(exprs)) = expr.downcast_ref() {
-        //     Box::new(Tuple(exprs
-        //         .iter()
-        //         .map(|expr| self.execute_expr(expr))
-        //         .collect::<Vec<Box<dyn Val>>>()))
+        } else if let Some(expr::Tuple(exprs)) = expr.downcast_ref() {
+            Box::new(Tuple(exprs
+                .iter()
+                .map(|expr| self.execute_expr(expr))
+                .collect::<Vec<Box<dyn Val>>>()))
+        } else if let Some(expr::Set(values)) = expr.downcast_ref() {
+            self.execute_set(values)
         } else if let Some(Assign(Symbol(name), right)) = expr.downcast_ref() {
             self.execute_assign(name, right)
         } else {
@@ -342,15 +349,32 @@ impl Interpreter {
         }
     }
 
+    fn execute_set(&mut self, exprs: &[Box<dyn Expr>]) -> Box<dyn Val> {
+        let mut set = HashSet::<Box<dyn Val>>::new();
+
+        for expr in exprs {
+            set.insert(self.execute_expr(expr));
+        }
+
+        Box::new(FiniteSet::new(set))
+    }
+
     // In future, return a result of whether it assigned or not?
     fn execute_assign(&mut self, name: &str, right: &Box<dyn Expr>) -> Box<dyn Val> {
-        if self.state.symbols.contains_key(name) {
+        if self.symbols.contains_key(name) {
             panic!("Variables cannot be reassigned")
         } else {
             let right = self.execute_expr(right);
-            self.state.symbols.insert(name.to_owned(), (*right).clone_box());
+            self.symbols.insert(
+                name.to_owned(),
+                SymStore::Value(right)
+            );
 
-            (*self.state.symbols.get(name).unwrap()).clone()
+            if let SymStore::Value(value) = self.symbols.get(name).unwrap() {
+                value.to_owned()
+            } else {
+                unreachable!()
+            }
         }
     }
 }
