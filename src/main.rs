@@ -13,7 +13,6 @@ use std::env;
 
 use config::{Config, Mode};
 use interpreter::Interpreter;
-// use interpreter::Interpreter;
 use lexer::Lexer;
 use parser::Parser;
 
@@ -26,7 +25,7 @@ fn main() {
 
         let tokens = lexer.lex().unwrap();
 
-        println!("{:#?}", tokens);
+        // println!("{:#?}", tokens);
 
         let mut parser = Parser::new(&tokens);
         let ast = parser.parse();
@@ -34,7 +33,7 @@ fn main() {
         println!("{:#?}", ast);
 
         let mut interpreter = Interpreter::new();
-        println!("{:?}", interpreter);
         interpreter.interpret(ast.stmts());
+        println!("{:#?}", interpreter);
     }
 }

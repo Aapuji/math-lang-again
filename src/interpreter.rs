@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use num::{BigInt, BigRational, Complex};
 
 use crate::ast::{expr, expr::*, stmt::*};
-use crate::set::{Set, FiniteSet};
+use crate::set::{self, FiniteSet, Int, Real, Set};
 use crate::token::TokenKind;
 use crate::value::{Tuple, Val};
 
@@ -25,6 +25,12 @@ impl SymStore {
     }
 }
 
+macro_rules! insert_symbol {
+    ( $map:ident , $name:expr , $struct_n:ident ) => {
+        $map.insert(String::from($name), SymStore::Value(Box::new($struct_n::new())));
+    };
+}
+
 #[derive(Debug)]
 pub struct Interpreter {
     symbols: HashMap<String, SymStore>
@@ -32,8 +38,19 @@ pub struct Interpreter {
 
 impl Interpreter {
     pub fn new() -> Self {
-        Self {
-            symbols: HashMap::new()
+        let mut symbols = HashMap::new();
+
+        insert_symbol!(symbols, "Int", Int);
+        insert_symbol!(symbols, "Real", Real);
+        
+        Self { symbols }
+    }
+
+    fn is_sym_assigned(&self, name: &str) -> bool {
+        match self.symbols.get(name) {
+            Some(SymStore::Value(_)) => true,
+            Some(SymStore::Type(_)) => false,
+            _ => false
         }
     }
 
@@ -45,7 +62,33 @@ impl Interpreter {
 
     pub fn execute_stmt(&mut self, stmt: &Box<dyn Stmt>) {
         if let Some(ExprStmt(expr)) = stmt.downcast_ref() {
-            println!("{}", self.execute_expr(expr))
+            // assign
+            if let Some(Assign(Symbol(name), right)) = expr.downcast_ref() {
+                self.execute_assign(name, right);
+            // typed assign
+            } else if let Some(TypedAssign(Symbol(name), typeset, right)) = expr.downcast_ref() {
+                self.execute_typed_assign(name, typeset, right);
+            // type expr : typecast or typedef
+            } else if let Some(TypeExpr(value, typeset)) = expr.downcast_ref() {
+                if let Some(Symbol(name)) = value.downcast_ref() {
+                    if !self.is_sym_assigned(name) {
+                        let typeset = self.execute_expr(typeset);
+
+                        // type def
+                        if let Some(set) = typeset.into_boxed_set() {
+                            self.symbols.insert(name.to_owned(), SymStore::Type(set));
+                            return;
+                        } else {
+                            panic!("'{typeset}' is not a set")
+                        }
+                    }
+                }
+
+                // type cast
+                println!("{}", todo!());
+            } else {
+                println!("{}", self.execute_expr(expr));
+            }
         } else {
             todo!()
         }
@@ -58,7 +101,7 @@ impl Interpreter {
             if let Some(SymStore::Value(value)) = self.symbols.get(name) {
                 value.clone()
             } else {
-                panic!("Variable {name} is not defined");
+                panic!("Variable '{name}' is not defined");
             }
         } else if let Some(Group(expr)) = expr.downcast_ref::<Group>() {
             self.execute_expr(expr)
@@ -87,8 +130,6 @@ impl Interpreter {
                 .collect::<Vec<Box<dyn Val>>>()))
         } else if let Some(expr::Set(values)) = expr.downcast_ref() {
             self.execute_set(values)
-        } else if let Some(Assign(Symbol(name), right)) = expr.downcast_ref() {
-            self.execute_assign(name, right)
         } else {
             todo!()
         }
@@ -118,7 +159,7 @@ impl Interpreter {
         } else if let Some(complex) = right.downcast_ref::<Complex<BigRational>>() {
             Box::new(-complex)
         } else {
-            panic!("Cannot apply unary operator '-'.");
+            panic!("Cannot apply unary operator '-'");
         }
     }
 
@@ -143,7 +184,7 @@ impl Interpreter {
             } else if let Ok(r_bool) = right.downcast::<bool>() {
                 Box::new(*l_bigint + *r_bool as u8)
             } else {
-                panic!("Cannot apply binary operator '+'.")
+                panic!("Cannot apply binary operator '+'")
             }
         // BigRational + _
         } else if let Ok(l_bigrat) = left.downcast::<BigRational>() {
@@ -159,7 +200,7 @@ impl Interpreter {
             } else if let Ok(r_bool) = right.downcast::<bool>() {
                 Box::new(*l_bigrat + BigInt::from(*r_bool as u8))
             } else {
-                panic!("Cannot apply binary operator '+'.")
+                panic!("Cannot apply binary operator '+'")
             }
         // Complex + _
         } else if let Ok(l_complex) = left.downcast::<Complex<BigRational>>() {
@@ -175,7 +216,7 @@ impl Interpreter {
             } else if let Ok(r_bool) = right.downcast::<bool>() {
                 Box::new(*l_complex + BigRational::from(BigInt::from(*r_bool as u8)))
             } else {
-                panic!("Cannot apply binary operator '+'.")
+                panic!("Cannot apply binary operator '+'")
             }
         } else if let Ok(l_bool) = left.downcast::<bool>() {
             // Adding BigInt
@@ -190,10 +231,10 @@ impl Interpreter {
             } else if let Ok(r_bool) = right.downcast::<bool>() {
                 Box::new(*l_bool ^ *r_bool)
             } else {
-                panic!("Cannot apply binary operator '+'.")
+                panic!("Cannot apply binary operator '+'")
             }
         } else {
-            panic!("Cannot apply binary operator '+'.")
+            panic!("Cannot apply binary operator '+'")
         }
     }
 
@@ -231,7 +272,7 @@ impl Interpreter {
             } else if let Ok(r_bool) = right.downcast::<bool>() {
                 Box::new(*l_bigint * *r_bool as u8)
             } else {
-                panic!("Cannot apply binary operator '*'.")
+                panic!("Cannot apply binary operator '*'")
             }
         // BigRational + _
         } else if let Ok(l_bigrat) = left.downcast::<BigRational>() {
@@ -248,7 +289,7 @@ impl Interpreter {
             } else if let Ok(r_bool) = right.downcast::<bool>() {
                 Box::new(*l_bigrat * BigInt::from(*r_bool as u8))
             } else {
-                panic!("Cannot apply binary operator '*'.")
+                panic!("Cannot apply binary operator '*'")
             }
         // Complex * _
         } else if let Ok(l_complex) = left.downcast::<Complex<BigRational>>() {
@@ -265,7 +306,7 @@ impl Interpreter {
             } else if let Ok(r_bool) = right.downcast::<bool>() {
                 Box::new(*l_complex * BigRational::from(BigInt::from(*r_bool as u8)))
             } else {
-                panic!("Cannot apply binary operator '*'.")
+                panic!("Cannot apply binary operator '*'")
             }
         } else if let Ok(l_bool) = left.downcast::<bool>() {
             // Multiplying BigInt
@@ -280,16 +321,16 @@ impl Interpreter {
             } else if let Ok(r_bool) = right.downcast::<bool>() {
                 Box::new(*l_bool & *r_bool)
             } else {
-                panic!("Cannot apply binary operator '*'.")
+                panic!("Cannot apply binary operator '*'")
             }
         } else {
-            panic!("Cannot apply binary operator '*'.")
+            panic!("Cannot apply binary operator '*'")
         }
     }
 
     fn execute_quot(left: &Box<dyn Val>, right: &Box<dyn Val>) -> Box<dyn Val> {
         if left.is_str() || right.is_str() {
-            panic!("Cannot apply binary operator '/' to text.")
+            panic!("Cannot apply binary operator '/' to text")
         // BigInt / _
         } else if let Ok(l_bigint) = left.downcast::<BigInt>() {
             // Dividing BigInt
@@ -303,9 +344,9 @@ impl Interpreter {
                 Box::new(Complex::<BigRational>::from(BigRational::from(*l_bigint)) / *r_complex)
             // Cannot Divide by Bools
             } else if let Ok(_) = right.downcast::<bool>() {
-                panic!("Cannot divide by a boolean.")
+                panic!("Cannot divide by a boolean")
             } else {
-                panic!("Cannot apply binary operator '/'.")
+                panic!("Cannot apply binary operator '/'")
             }
         // BigRational / _
         } else if let Ok(l_bigrat) = left.downcast::<BigRational>() {
@@ -322,7 +363,7 @@ impl Interpreter {
             } else if let Ok(_) = right.downcast::<bool>() {
                 panic!("Cannot divide by a boolean")
             } else {
-                panic!("Cannot apply binary operator '.'.")
+                panic!("Cannot apply binary operator '.'")
             }
         // Complex / _
         } else if let Ok(l_complex) = left.downcast::<Complex<BigRational>>() {
@@ -339,13 +380,13 @@ impl Interpreter {
             } else if let Ok(_) = right.downcast::<bool>() {
                 panic!("Cannot divide by a boolean")
             } else {
-                panic!("Cannot apply binary operator '/'.")
+                panic!("Cannot apply binary operator '/'")
             }
         // Cannot use division with booleans
         } else if let Ok(_) = left.downcast::<bool>() {
             panic!("Cannot use division with booleans")
         } else {
-            panic!("Cannot apply binary operator '/'.")
+            panic!("Cannot apply binary operator '/'")
         }
     }
 
@@ -360,21 +401,42 @@ impl Interpreter {
     }
 
     // In future, return a result of whether it assigned or not?
-    fn execute_assign(&mut self, name: &str, right: &Box<dyn Expr>) -> Box<dyn Val> {
-        if self.symbols.contains_key(name) {
-            panic!("Variables cannot be reassigned")
-        } else {
-            let right = self.execute_expr(right);
-            self.symbols.insert(
-                name.to_owned(),
-                SymStore::Value(right)
-            );
+    fn execute_assign(&mut self, name: &str, right: &Box<dyn Expr>) {
+        if self.is_sym_assigned(name) {
+            panic!("Variable {name} cannot be reassigned")
+        }
 
-            if let SymStore::Value(value) = self.symbols.get(name).unwrap() {
-                value.to_owned()
-            } else {
-                unreachable!()
+        let right = self.execute_expr(right);
+
+        if let Some(SymStore::Type(typeset)) = self.symbols.get(name) {
+            if !typeset.contains(&right) {
+                panic!("'{name}' is in '{typeset}' which does not contain '{right}'")
             }
+        }
+
+        self.symbols.insert(
+            name.to_owned(),
+            SymStore::Value(right)
+        );
+    }
+
+    fn execute_typed_assign(&mut self, name: &str, typeset: &Box<dyn Expr>, right: &Box<dyn Expr>) {
+        if self.is_sym_assigned(name) {
+            panic!("Variable '{name}' cannot be reassigned")
+        }
+
+        let typeset = self.execute_expr(typeset);
+
+        if let Some(set) = typeset.into_boxed_set() {
+            let value = self.execute_expr(right);
+
+            if set.contains(&value) {
+                self.symbols.insert(name.to_owned(), SymStore::Value(value));
+            } else {
+                panic!("Incompatible types: '{value}' cannot be cast into '{typeset}'");
+            }
+        } else {
+            panic!("'{typeset}' is not a set");
         }
     }
 }

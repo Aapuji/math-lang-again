@@ -322,8 +322,6 @@ impl<'t> Parser<'t> {
     }
 
     fn parse_primary(&mut self) -> Box<dyn Expr> {
-        println!("Primary: {:?}", self.current().kind());
-
         return match self.current().kind() {
             TokenKind::Ident(lexeme) => self.parse_ident(lexeme.clone()),
             TokenKind::String(lexeme) => self.parse_string(lexeme.clone()),
