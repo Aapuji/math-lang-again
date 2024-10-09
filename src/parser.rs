@@ -35,6 +35,7 @@ impl<'t> Parser<'t> {
             }
 
             ast.push_stmt(self.parse_stmt());
+            self.next();
         }
 
         ast
@@ -49,16 +50,22 @@ impl<'t> Parser<'t> {
     fn parse_expr_stmt(&mut self) -> Box<dyn Stmt> {
         let expr = self.parse_expr();
 
+        let mut found_endl = false;
+
         if self.match_next(&[&TokenKind::EOL]) {
             // add log stmt here
-            ()
+            found_endl = true;
         }
 
         if self.match_next(&[&TokenKind::Semicolon]) {
-            ()
+            found_endl = true;
         }
 
-        Box::new(ExprStmt(expr))
+        if found_endl {
+            Box::new(ExprStmt(expr))
+        } else {
+            panic!("Expected ';' or EOL.")
+        }
     }
 
     fn parse_expr(&mut self) -> Box<dyn Expr> {
@@ -110,43 +117,6 @@ impl<'t> Parser<'t> {
 
         expr
     }
-
-    // fn parse_arrow(&mut self) -> Box<dyn Expr> {
-    //     let mut is_func = false;
-    //     let mut args = Vec::new();
-        
-    //     if self.match_next(&[&TokenKind::OpenParen]) {
-    //         let dummy: Box<dyn Expr> = Box::new(Symbol(String::new()));
-    
-    //         let call = self.finish_call(dummy);
-
-    //         if let Some(Call(_, inner_args)) = call.downcast_ref() {
-    //             args = self.validate_args(inner_args);
-    //             is_func = true;
-    //         } else {
-    //             unreachable!()
-    //         }
-    //     } else if let Some(tok) = self.peek() {
-    //         if let TokenKind::Ident(name) = tok.kind() {
-    //             args = vec![Symbol(name.to_owned())];
-    //             is_func = true;
-    //         }
-    //     }
-
-    //     if self.match_next(&[&TokenKind::SmallArrow]) {
-    //         if is_func {
-    //             Box::new(Func(args, self.parse_expr()))
-    //         } else {
-    //             panic!("Invalid left-hand arguments for '->'")
-    //         }
-    //     } else {
-    //         if is_func {
-    //             panic!("Expected expression, got arguments list instead")
-    //         } else {
-    //             self.parse_or()
-    //         }
-    //     }
-    // }
 
     fn parse_or(&mut self) -> Box<dyn Expr> {
         let mut expr = self.parse_and();
@@ -336,6 +306,8 @@ impl<'t> Parser<'t> {
     }
 
     fn parse_primary(&mut self) -> Box<dyn Expr> {
+        println!("Primary: {:?}", self.current().kind());
+
         return match self.current().kind() {
             TokenKind::Ident(lexeme) => self.parse_ident(lexeme.clone()),
             TokenKind::String(lexeme) => self.parse_string(lexeme.clone()),
