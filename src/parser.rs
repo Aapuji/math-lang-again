@@ -7,7 +7,7 @@ use crate::token::{Token, TokenKind};
 pub struct Parser<'t> {
     tokens: &'t [Token],
     line: usize,
-    i: usize
+    i: usize,
 }
 
 impl<'t> Parser<'t> {
@@ -42,9 +42,7 @@ impl<'t> Parser<'t> {
     }
 
     fn parse_stmt(&mut self) -> Box<dyn Stmt> {        
-        let res = self.parse_expr_stmt();
-
-        res
+        self.parse_expr_stmt()
     }
 
     fn parse_expr_stmt(&mut self) -> Box<dyn Stmt> {
@@ -86,7 +84,7 @@ impl<'t> Parser<'t> {
     }
 
     fn parse_assign(&mut self) -> Box<dyn Expr> {
-        let expr = self.parse_or();
+        let expr = self.parse_type();
 
         if self.match_next(&[&TokenKind::Eq]) {
             self.next();
@@ -109,10 +107,28 @@ impl<'t> Parser<'t> {
                 return Box::new(Assign(Symbol(name.unwrap().clone()), Box::new(Func(args, right))))
             // Parse var: x = expr
             } else if let Some(Symbol(name)) = expr.downcast_ref() {
-                return Box::new(Assign(Symbol(name.clone()), right));
+                return Box::new(Assign(Symbol(name.to_owned()), right));
+            } else if let Some(TypeExpr(sym, typeset)) = expr.downcast_ref::<TypeExpr>() {
+                if let Some(Symbol(name)) = sym.downcast_ref() {
+                    return Box::new(TypedAssign(Symbol(name.to_owned()), typeset.to_owned(), right))
+                }
             }
 
             panic!("Invalid left-hand for assignment"); // TODO: Have actual error reporting
+        }
+
+        expr
+    }
+
+    fn parse_type(&mut self) -> Box<dyn Expr> {
+        let expr = self.parse_or();
+
+        if self.match_next(&[&TokenKind::Colon]) {
+            self.next();
+
+            let right = self.parse_or();
+
+            return Box::new(TypeExpr(expr, right)) // Could be a cast (x : Int AFTER x is defined) or a type-declaration (x : Int BEFORE x is defined)
         }
 
         expr
@@ -519,6 +535,15 @@ impl<'t> Parser<'t> {
             None
         } else {
             Some(&self.tokens[self.i + 1])
+        }
+    }
+
+    // TODO, use this where I did all the nesting before
+    fn peek_kind(&self) -> Option<&TokenKind> {
+        if let Some(t) = self.peek() {
+            Some(t.kind())
+        } else {
+            None
         }
     }
 

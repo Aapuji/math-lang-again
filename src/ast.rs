@@ -54,8 +54,9 @@ pub mod stmt {
     
     impl dyn Stmt {
         pub fn downcast_ref<T: Stmt>(&self) -> Option<&T> {
-            self.as_any().downcast_ref()
+            self.as_any().downcast_ref::<T>()
         }
+
     }
 
     create_structs!(
@@ -111,9 +112,11 @@ pub mod expr {
             Binary(Box<dyn Expr>, Token, Box<dyn Expr>),
             Call(Box<dyn Expr>, Vec<Box<dyn Expr>>),
             Assign(Symbol, Box<dyn Expr>),
+            TypedAssign(Symbol, Box<dyn Expr>, Box<dyn Expr>), // name, type, value (x : Int = 5; y : {1, 2, 3} = 0)
             Func(Vec<Symbol>, Box<dyn Expr>),
             Tuple(Vec<Box<dyn Expr>>),
             Matrix(Vec<Vec<Box<dyn Expr>>>),
-            Set(Vec<Box<dyn Expr>>) // store exprs in a vector, and turn into set when resolving values
+            Set(Vec<Box<dyn Expr>>), // store exprs in a vector, and turn into set when resolving values
+            TypeExpr(Box<dyn Expr>, Box<dyn Expr>) // value, type (2 : Int; msg : Str)
     );
 }
