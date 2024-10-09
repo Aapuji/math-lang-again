@@ -30,7 +30,7 @@ macro_rules! create_structs {
         ),* 
     ) => {
         $(
-            #[derive(Debug)]
+            #[derive(Debug, Clone)]
             pub struct $name($( pub $tp ),* );
 
             impl $trait for $name {
@@ -73,13 +73,32 @@ pub mod expr {
     use super::Val;
     use super::Token;
 
-    pub trait Expr : Any + Debug {
+    pub trait Expr : Any + Debug + CloneExpr {
         fn as_any(&self) -> &dyn Any;
     }
     
     impl dyn Expr {
         pub fn downcast_ref<T: Expr>(&self) -> Option<&T> {
             self.as_any().downcast_ref::<T>()
+        }
+    }
+
+    pub trait CloneExpr {
+        fn clone_expr(&self) -> Box<dyn Expr>;
+    }
+    
+    impl<T> CloneExpr for T
+    where 
+        T: 'static + Expr + Clone
+    {
+        fn clone_expr(&self) -> Box<dyn Expr> {
+            Box::new(self.clone())
+        }
+    }
+    
+    impl Clone for Box<dyn Expr> {
+        fn clone(&self) -> Self {
+            self.clone_expr()
         }
     }
     

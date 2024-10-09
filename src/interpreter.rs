@@ -9,7 +9,7 @@ use crate::value::{Tuple, Val};
 /// What the symbol map stores.
 /// 
 /// If the type is initialized but not the value, then [`SymStore::Type`] is used, but once the value is declared, the type no longer matters, because the variable can't change, and thus [`SymStore::Value`] is enough (type is `{value}`).
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 enum SymStore {
     Value(Box<dyn Val>),
     Type(Box<dyn Set>),
