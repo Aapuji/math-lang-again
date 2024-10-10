@@ -219,3 +219,12 @@ results_2 : [_] = f(#array values_2)
 y = (-1 +/- sqrt(10)) / 2 -/+ 1/2 // y = #array [(-2 + sqrt10) / 2, (-sqrt10)/2]
 ```
     
+Update 10/10/2024
+Idea for Infinite Sets
+* USE PREDICATES!:
+  * So the type `Int` is actually `{x where x : Int}`, which may seem obvious, but `x : Int` is actually `Int::contains(x)`, which is essentially _is x a `BigInt` or `BigRational` with `denom=0`?_.
+  * This allows for other types like `Int \ Nat` to be `{x where x : Int && x !: Nat}`, which again seems obvious, but can be represented as `Int::contains(x) && !Nat::contains(x)`.
+  * This even allows for crazy stuff like mappings! Ex: `Str \ {x where x : Str && Str.len(x) == 0}`, which is now much more complex, but is equal to the predicate `Str::contains(x) && Str::len(x) != 0`
+* USE Canonicalization to reduce a set expression into a canonical form:
+  * Reduce defined set operations (eg. `A | A = A`, `A | B where B <: A = A`, etc.)
+  * For example, `Int | {"hi", "bye"}` can become `{x where x : Int || {"hi", "bye"}.contains(x)}`
