@@ -2,8 +2,9 @@ use std::any::Any;
 use std::collections::HashSet;
 use std::fmt;
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::rc::Rc;
 
-use num::{BigInt, BigRational, Complex};
+use num::{BigInt, BigRational, Complex, Zero};
 
 use crate::value::Val;
 
@@ -175,54 +176,59 @@ impl Set for FiniteSet {
 The plan is to use predicates to determine the sets.
 
 
+-- List of Sets --
+    Whole
+    Even
+    Odd
+    Nat
+    Int
+    Real
+    Im
+    Complex
 
-
-
-
+    Bool
+    
+    Char
+    Str
 */
 
-pub trait InfiniteSet: Set {
-    fn display(&self) -> String;
-    fn log(&self) -> String {
-        format!("{{ \x1b[3minfinite set <{}>\x1b[m }}", self.display())
-    }
-}
+#[derive(Debug)]
+pub struct SetPool(HashSet<Rc<dyn Set>>);
 
-#[derive(Debug, Clone, Copy)]
-pub struct Int {
-    hash: u64
-}
-
-impl Int {
+impl SetPool {
     pub fn new() -> Self {
-        Self {
-            hash: 0
-        }
+        Self(HashSet::new())
     }
 }
 
-impl PartialEq for Int {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum InfSet {
+    Nat = 0,
+    Int,
+    Real,
+    Complex,
+    Str,
 }
 
-impl Hash for Int {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write_u64(self.hash);
-    }
-}
-
-impl fmt::Display for Int {
+impl fmt::Display for InfSet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.display())
+        write!(f, "{:?}", self)
     }
 }
 
-impl Val for Int {
+impl Hash for InfSet {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write_u8(*self as u8);
+    }
+}
+
+impl Val for InfSet {
     fn compare(&self, other: &dyn Val) -> bool {
-        if let Some(_) = other.downcast_ref::<Int>() {
-            true
+        if let Some(set) = other.downcast_ref::<InfSet>() {
+            match (self, set) {
+                (a, b) if a == b => true,
+                _ => false
+            }
         } else {
             false
         }
@@ -249,13 +255,17 @@ impl Val for Int {
     }
 }
 
-impl Set for Int {
+impl Set for InfSet {
     fn is_finite(&self) -> bool {
-        false
+        true
     }
 
     fn is_countable(&self) -> bool {
-        true
+        match self {
+            Self::Nat   |
+            Self::Str   => true,
+            _           => false
+        }
     }
 
     fn enumerate(&self) -> Option<Box<dyn Iterator<Item = &Box<dyn Val>> + '_>> {
@@ -263,17 +273,48 @@ impl Set for Int {
     }
 
     fn contains(&self, other: &Box<dyn Val>) -> bool {
-        // If other is a number && other is not complex or fractional, it is an integer
-        if other.is_num() {
-            if let Some(_) = other.downcast_ref::<Complex<BigRational>>() {
-                false
-            } else if let Some(bigrat) = other.downcast_ref::<BigRational>() {
-                bigrat.denom() == &BigInt::from(1)
+        match self {
+            Self::Nat => if other.is_num() {
+                if let Some(complex) = other.downcast_ref::<Complex<BigRational>>() {
+                    complex.im == BigRational::zero() && 
+                    complex.re.denom() == &BigInt::from(1) && 
+                    complex.re >= BigRational::zero()
+                } else if let Some(bigrat) = other.downcast_ref::<BigRational>() {
+                    bigrat.denom() == &BigInt::from(1) &&
+                    bigrat >= &BigRational::zero()
+                } else {
+                    true
+                }
             } else {
-                true
+                false
             }
-        } else {
-            false
+
+            Self::Int => if other.is_num() {
+                if let Some(complex) = other.downcast_ref::<Complex<BigRational>>() {
+                    complex.im == BigRational::zero() && 
+                    complex.re.denom() == &BigInt::from(1)
+                } else if let Some(bigrat) = other.downcast_ref::<BigRational>() {
+                    bigrat.denom() == &BigInt::from(1)
+                } else {
+                    true
+                }
+            } else {
+                false
+            }
+
+            Self::Real => if other.is_num() {
+                if let Some(complex) = other.downcast_ref::<Complex<BigRational>>() {
+                    complex.im == BigRational::zero()
+                } else {
+                    true
+                }
+            } else {
+                false
+            }
+
+            Self::Complex => other.is_num(),
+
+            Self::Str => other.is_str()
         }
     }
 
@@ -282,109 +323,27 @@ impl Set for Int {
     }
 }
 
-impl InfiniteSet for Int {
-    fn display(&self) -> String {
-        String::from("Int")
-    }
+#[derive(Debug, Clone)]
+pub enum SetOp {
+    Union(Rc<dyn Set>, Rc<dyn Set>),
+    Intersect(Rc<dyn Set>, Rc<dyn Set>),
+    Quot(Rc<dyn Set>, Rc<dyn Set>),
+    SymDiff(Rc<dyn Set>, Rc<dyn Set>),
+    Complement(Rc<dyn Set>)
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Real {
-    hash: u64
-}
+impl SetOp {}
 
-impl Real {
-    pub fn new() -> Self {
-        Self {
-            hash: 1
-        }
-    }
-}
-
-impl PartialEq for Real {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
-}
-
-impl Hash for Real {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write_u64(self.hash);
-    }
-}
-
-impl fmt::Display for Real {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.display())
-    }
-}
-
-impl Val for Real {
-    fn compare(&self, other: &dyn Val) -> bool {
-        if let Some(_) = other.downcast_ref::<Real>() {
-            true
-        } else {
-            false
-        }
-    }
-
-    fn hash_val(&self, mut state: &mut dyn Hasher) {
-        self.hash(&mut state)
-    }
-
-    fn is_set(&self) -> bool {
-        true
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_boxed_any(&self) -> Box<dyn Any> {
-        Box::new(self.to_owned())
-    }
-
-    fn into_boxed_set(&self) -> Option<Box<dyn Set>> {
-        Some(Box::new(self.to_owned()))
-    }
-}
-
-impl Set for Real {
-    fn is_finite(&self) -> bool {
-        false
-    }
-
-    fn is_countable(&self) -> bool {
-        false
-    }
-
-    fn enumerate(&self) -> Option<Box<dyn Iterator<Item = &Box<dyn Val>> + '_>> {
-        None
-    }
-
-    fn contains(&self, other: &Box<dyn Val>) -> bool {
-        if other.is_num() {
-            if let Some(_) = other.downcast_ref::<Complex<BigRational>>() {
-                false
+impl PartialEq for SetOp {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            &Self::Union(A, B) => if let &Self::Union(U, V) = other {
+                A.compare(U)
             } else {
-                true
+                false
             }
-        } else {
-            true
         }
     }
-
-    fn is_subset(&self, other: &Box<dyn Set>) -> bool {
-        todo!()
-    }
 }
-
-impl InfiniteSet for Real {
-    fn display(&self) -> String {
-        String::from("Real")
-    }
-}
-
-
 
 

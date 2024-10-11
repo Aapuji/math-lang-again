@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use num::{BigInt, BigRational, Complex};
 
 use crate::ast::{expr, expr::*, stmt::*};
-use crate::set::{self, FiniteSet, Int, Real, Set};
+use crate::set::{self, InfSet, FiniteSet, Set, SetPool};
 use crate::token::TokenKind;
 use crate::value::{Tuple, Val};
 
@@ -33,17 +33,21 @@ macro_rules! insert_symbol {
 
 #[derive(Debug)]
 pub struct Interpreter {
-    symbols: HashMap<String, SymStore>
+    symbols: HashMap<String, SymStore>,
+    set_pool: SetPool
 }
 
 impl Interpreter {
     pub fn new() -> Self {
         let mut symbols = HashMap::new();
 
-        insert_symbol!(symbols, "Int", Int);
-        insert_symbol!(symbols, "Real", Real);
+        // insert_symbol!(symbols, "Int", Int);
+        // insert_symbol!(symbols, "Real", Real);
         
-        Self { symbols }
+        Self { 
+            symbols,
+            set_pool: SetPool::new()
+        }
     }
 
     fn is_sym_assigned(&self, name: &str) -> bool {
