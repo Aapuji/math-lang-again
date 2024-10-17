@@ -150,7 +150,8 @@ msg : [Char] = "Hello World"
 Types are Sets, Sets are Types.
 ```
 
-Little Change (9/30/2024) -- Tuples vs Lists and Matricies:
+## Tuples vs Lists and Matrices
+### Little Change (9/30/2024) 
 ```rs
 // Tuple
 origin : [Real^2]
@@ -198,7 +199,8 @@ f(x, y) = x + y
 // Set^negative is not defined
 ```
 
-Little Change (10/3/2024) -- Arrays
+## Arrays
+### Little Change (10/3/2024)
 ```rs
 // Now there will also be arrays in the language. However, an array is actually a list of values that is passed into an expression expecting a singular value, and executes the expression on each value of the array and outputs that.
 
@@ -219,7 +221,8 @@ results_2 : [_] = f(#array values_2)
 y = (-1 +/- sqrt(10)) / 2 -/+ 1/2 // y = #array [(-2 + sqrt10) / 2, (-sqrt10)/2]
 ```
     
-Update 10/10/2024
+## Idea for Infinite Sets
+### Little Change (10/10/2024)
 Idea for Infinite Sets
 * USE PREDICATES!:
   * So the type `Int` is actually `{x where x : Int}`, which may seem obvious, but `x : Int` is actually `Int::contains(x)`, which is essentially _is x a `BigInt` or `BigRational` with `denom=0`?_.
@@ -228,3 +231,53 @@ Idea for Infinite Sets
 * USE Canonicalization to reduce a set expression into a canonical form:
   * Reduce defined set operations (eg. `A | A = A`, `A | B where B <: A = A`, etc.)
   * For example, `Int | {"hi", "bye"}` can become `{x where x : Int || {"hi", "bye"}.contains(x)}`
+
+## Importing and Modules
+### Little Change (10/17/2024)
+
+The filesystem is built of `module`s, which represent a `math` file (actual name and extension tbd).
+
+To create one, use `module`:
+```
+// main.math
+module A
+```
+Modules can either be initialized, and then created with another file, or can be created in the same file:
+```
+// main.math
+module A
+module B do
+    ...
+end
+
+// A.math
+...
+```
+In a module, nothing will be exported. In order to make symbols and structures available for external use, you have to `export` them. You can `export` multiple times, but it is an error to export _the same_ item multiple times. By default, something exported will be public (`pub`), but visibility modifiers can be added: `pub` (open to all modules; default), `prot` (open only to sibling modules and its own children), `priv` (open only to its own children modules). One visibility can be applied per export.
+```rs
+// main.math
+module Foo
+module Bar
+
+// Foo.math
+foo = "Foo"
+export foo
+
+// Bar.math
+module Baz do
+    baz = "Baz"
+end
+
+a = 1
+b = 2
+c = 3
+bar = "Bar"
+
+print(baz) // error!
+
+export priv a, b
+export prot c
+export pub bar
+```
+stuff happens
+
