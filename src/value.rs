@@ -18,10 +18,6 @@ pub trait Val: Any + Debug + Display + CloneBox {
 
     fn as_any(&self) -> &dyn Any;
     fn as_boxed_any(&self) -> Box<dyn Any>;
-
-    fn into_boxed_set(&self) -> Option<Box<dyn Set>> {
-        None
-    }
 }
 
 impl dyn Val {

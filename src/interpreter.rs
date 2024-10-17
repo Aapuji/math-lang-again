@@ -1,8 +1,9 @@
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 use num::{BigInt, BigRational, Complex};
 
 use crate::ast::{expr, expr::*, stmt::*};
-use crate::set::{self, InfSet, FiniteSet, Set, SetPool};
+use crate::set::{self, canon, CanonSet, FiniteSet, Set, SetPool};
 use crate::token::TokenKind;
 use crate::value::{Tuple, Val};
 
@@ -12,22 +13,22 @@ use crate::value::{Tuple, Val};
 #[derive(Debug)]
 enum SymStore {
     Value(Box<dyn Val>),
-    Type(Box<dyn Set>),
+    Type(Rc<CanonSet>),
 }
 
 impl SymStore {
     /// Returns if it is a subset of the given set.
-    fn subset_of(&self, set: &Box<dyn Set>) -> bool {
+    fn subset_of(&self, set: Rc<CanonSet>) -> bool {
         match self {
             Self::Value(value) => set.contains(value),
-            Self::Type(typeset) => typeset.is_subset(set),
+            Self::Type(typeset) => typeset.is_subset(&set),
         }
     }
 }
 
 macro_rules! insert_symbol {
-    ( $map:ident , $name:expr , $struct_n:ident ) => {
-        $map.insert(String::from($name), SymStore::Value(Box::new($struct_n::new())));
+    ( $self:ident , $name:expr , $struct_n:ident ) => {
+        $self.insert(String::from($name), SymStore::Value(Box::new($struct_n::new())));
     };
 }
 
@@ -41,8 +42,8 @@ impl Interpreter {
     pub fn new() -> Self {
         let mut symbols = HashMap::new();
 
-        // insert_symbol!(symbols, "Int", Int);
-        // insert_symbol!(symbols, "Real", Real);
+        // insert_symbol!(self, "Int", Int);
+        // insert_symbol!(self, "Real", Real);
         
         Self { 
             symbols,
@@ -56,6 +57,23 @@ impl Interpreter {
             Some(SymStore::Type(_)) => false,
             _ => false
         }
+    }
+
+    fn insert_sym(&mut self, name: String, value: Box<dyn Val>) {
+        let value = if let Some(set) = value.downcast_ref::<Rc<CanonSet>>() {
+            Box::new(self.set_pool.intern(canon(Rc::clone(set))))
+        } else {
+            value
+        };
+
+        self.symbols.insert(name, SymStore::Value(value));
+    }
+
+    fn insert_sym_type(&mut self, name: String, set: Rc<CanonSet>) {
+        self.symbols.insert(
+            name, 
+            SymStore::Type(self.set_pool.intern(set))
+        );
     }
 
     pub fn interpret<'t>(&mut self, stmts: &'t [Box<dyn Stmt>]) {
@@ -79,8 +97,8 @@ impl Interpreter {
                         let typeset = self.execute_expr(typeset);
 
                         // type def
-                        if let Some(set) = typeset.into_boxed_set() {
-                            self.symbols.insert(name.to_owned(), SymStore::Type(set));
+                        if let Some(set) = typeset.downcast_ref::<Rc<CanonSet>>() {
+                            self.insert_sym_type(name.to_owned(), Rc::clone(set));
                             return;
                         } else {
                             panic!("'{typeset}' is not a set")
@@ -401,7 +419,7 @@ impl Interpreter {
             set.insert(self.execute_expr(expr));
         }
 
-        Box::new(FiniteSet::new(set))
+        Box::new(self.set_pool.intern(Rc::new(CanonSet::Finite(FiniteSet::new(set)))))
     }
 
     // In future, return a result of whether it assigned or not?
@@ -418,9 +436,9 @@ impl Interpreter {
             }
         }
 
-        self.symbols.insert(
+        self.insert_sym(
             name.to_owned(),
-            SymStore::Value(right)
+            right
         );
     }
 
@@ -431,11 +449,11 @@ impl Interpreter {
 
         let typeset = self.execute_expr(typeset);
 
-        if let Some(set) = typeset.into_boxed_set() {
+        if let Some(set) = typeset.downcast_ref::<Rc<CanonSet>>() {
             let value = self.execute_expr(right);
 
             if set.contains(&value) {
-                self.symbols.insert(name.to_owned(), SymStore::Value(value));
+                self.insert_sym(name.to_owned(), value);
             } else {
                 panic!("Incompatible types: '{value}' cannot be cast into '{typeset}'");
             }
