@@ -1,10 +1,7 @@
 use std::any::Any;
 use std::fmt::{self, Debug, Display};
 use std::hash::{Hash, Hasher};
-use std::ops::Deref;
 use num::{BigInt, BigRational, Complex};
-
-use crate::set::Set;
 
 pub trait Val: Any + Debug + Display + CloneBox {
     fn compare(&self, other: &dyn Val) -> bool;
