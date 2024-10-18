@@ -207,7 +207,7 @@ impl<'t> Parser<'t> {
     fn parse_set_ops(&mut self) -> Box<dyn Expr> {
         let mut expr = self.parse_term();
 
-        while self.match_next(&[&TokenKind::Amp, &TokenKind::Bar, &TokenKind::BackSlash]) {
+        while self.match_next(&[&TokenKind::Amp, &TokenKind::Bar, &TokenKind::BackSlash, &TokenKind::Tilde]) {
             let op = self.current().clone();
             self.next();
 
@@ -253,8 +253,7 @@ impl<'t> Parser<'t> {
         match self.current().kind() {
             TokenKind::Bang  |
             TokenKind::Minus |
-            TokenKind::Plus  |
-            TokenKind::Tilde => {
+            TokenKind::Plus  => {
                 let op = self.current().clone();
                 self.next();
 
@@ -273,7 +272,7 @@ impl<'t> Parser<'t> {
             let op = self.current().clone();
             self.next();
 
-            let right = self.parse_power();
+            let right = self.parse_unary();
             expr = Box::new(Binary(expr, op, right));
         }
 

@@ -3,7 +3,7 @@ use std::rc::Rc;
 use num::{BigInt, BigRational, Complex};
 
 use crate::ast::{expr, expr::*, stmt::*};
-use crate::set::{self, canon, CanonSet, FiniteSet, Set, SetPool};
+use crate::set::{self, canon, CanonSet, FiniteSet, InfiniteSet, Set, SetPool};
 use crate::token::TokenKind;
 use crate::value::{Tuple, Val};
 
@@ -143,6 +143,7 @@ impl Interpreter {
                 &TokenKind::Minus   => Self::execute_diff(&left, &right),
                 &TokenKind::Star    => Self::execute_prod(&left, &right),
                 &TokenKind::Slash   => Self::execute_quot(&left, &right),
+                &TokenKind::Caret   => Self::execute_power(&left, &right),
                 _ => todo!()
             }
         } else if let Some(expr::Tuple(exprs)) = expr.downcast_ref() {
@@ -411,6 +412,18 @@ impl Interpreter {
             panic!("Cannot apply binary operator '/'")
         }
     }
+
+        fn execute_power(left: &Box<dyn Val>, right: &Box<dyn Val>) -> Box<dyn Val> {
+            if let Some(set) = left.downcast_ref::<Rc<CanonSet>>() {
+                if InfiniteSet::Nat.contains(right) {
+                    todo!()
+                } else {
+                    panic!("'{right}' is not in 'Nat'");
+                }
+            } else {
+                todo!()
+            }
+        }
 
     fn execute_set(&mut self, exprs: &[Box<dyn Expr>]) -> Box<dyn Val> {
         let mut set = HashSet::<Box<dyn Val>>::new();
