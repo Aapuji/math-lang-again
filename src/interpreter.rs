@@ -1,6 +1,9 @@
 use std::collections::{HashMap, HashSet};
+use std::ops::Neg;
 use std::rc::Rc;
-use num::{BigInt, BigRational, Complex};
+use num::bigint::Sign;
+use num::{BigInt, BigRational, Complex, One, Zero};
+use num::pow::Pow;
 
 use crate::ast::{expr, expr::*, stmt::*};
 use crate::set::{self, canon, CanonSet, FiniteSet, InfiniteSet, Set, SetPool};
@@ -45,10 +48,14 @@ impl Interpreter {
             set_pool: SetPool::new()
         };
 
+        // Numeric Types (implementing class Num?)
         this.insert_sym(String::from("Nat"), Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Nat))));
         this.insert_sym(String::from("Int"), Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Int))));
         this.insert_sym(String::from("Real"), Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Real))));
-        this.insert_sym(String::from("Complex"), Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Nat))));
+        this.insert_sym(String::from("Complex"), Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Complex))));
+
+        // Text Types (implementing class Text?)
+        this.insert_sym(String::from("Str"), Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Str))));
 
         this
     }
@@ -183,6 +190,8 @@ impl Interpreter {
             Box::new(-bigrat)
         } else if let Some(complex) = right.downcast_ref::<Complex<BigRational>>() {
             Box::new(-complex)
+        } else if let Some(&bool) = right.downcast_ref::<bool>() {
+            Box::new(bool)
         } else {
             panic!("Cannot apply unary operator '-'");
         }
@@ -388,7 +397,7 @@ impl Interpreter {
             } else if let Ok(_) = right.downcast::<bool>() {
                 panic!("Cannot divide by a boolean")
             } else {
-                panic!("Cannot apply binary operator '.'")
+                panic!("Cannot apply binary operator '/'")
             }
         // Complex / _
         } else if let Ok(l_complex) = left.downcast::<Complex<BigRational>>() {
@@ -415,17 +424,202 @@ impl Interpreter {
         }
     }
 
-        fn execute_power(left: &Box<dyn Val>, right: &Box<dyn Val>) -> Box<dyn Val> {
-            if let Some(set) = left.downcast_ref::<Rc<CanonSet>>() {
-                if InfiniteSet::Nat.contains(right) {
+    fn execute_power(left: &Box<dyn Val>, right: &Box<dyn Val>) -> Box<dyn Val> {            
+        if let Some(set) = left.downcast_ref::<Rc<CanonSet>>() {
+            if InfiniteSet::Nat.contains(right) {
+                todo!()
+            } else {
+                panic!("'{right}' is not in 'Nat'");
+            }
+        } else {
+            if left.is_str() || right.is_str() {
+                panic!("Cannot apply binary operator '^' to text")
+            // BigInt ^ _
+            } else if let Ok(l_bigint) = left.downcast::<BigInt>() {
+                // Exponentiating BigInt
+                if let Ok(r_bigint) = right.downcast::<BigInt>() {
+                    if *r_bigint == BigInt::zero() {
+                        if *l_bigint == BigInt::zero() {
+                            panic!("Cannot raise '0' to the power of '0'")
+                        } else {
+                            return Box::new(BigInt::one())
+                        }
+                    }
+
+                    let v = r_bigint.to_u32_digits();
+
+                    // Don't have to check if v.1.len() > 1 for r_x = 0 or 1, because the len for them won't be > 1
+
+                    let res: Box<dyn Val>;
+                    if v.0 != Sign::Minus {
+                        res = Box::new(l_bigint.pow(if v.1.len() > 1 {
+                            panic!("Exponent is too large to compute");
+                        } else {
+                            v.1[0]
+                        }))
+                    } else {
+                        if *l_bigint == BigInt::zero() {
+                            panic!("Base of negative exponent cannot be '0'")
+                        } else if *l_bigint == BigInt::one() {
+                            res = Box::new(BigInt::one());
+                        } else if v.1.len() > 1 {
+                            // approximate with pow=-inf, aka result=0
+                            res = Box::new(BigInt::zero())
+                        } else {
+                            res = Box::new(BigRational::new(BigInt::one(), l_bigint.pow(v.1[0])))
+                        }
+                    };
+
+                    res
+                // Exponentiating BigRational
+                } else if let Ok(r_bigrat) = right.downcast::<BigRational>() {
+                    todo!()
+                // Exponentiating Complex
+                } else if let Ok(r_complex) = right.downcast::<Complex<BigRational>>() {
+                    todo!()
+                // Exponentiating Bools
+                } else if let Ok(bool) = right.downcast::<bool>() {
+                    Box::new(l_bigint.pow(*bool as u32))
+                } else {
+                    panic!("Cannot apply binary operator '^'")
+                }
+            // BigRational ^ _
+            } else if let Ok(l_bigrat) = left.downcast::<BigRational>() {
+                // Exponentiating BigInt
+                if let Ok(r_bigint) = right.downcast::<BigInt>() {
+                    if *r_bigint == BigInt::zero() {
+                        if *l_bigrat == BigRational::zero() {
+                            panic!("Cannot raise '0' to the power of '0'")
+                        } else {
+                            return Box::new(BigInt::one())
+                        }
+                    }
+                    
+                    let v = r_bigint.to_u32_digits();
+                    let res: Box<dyn Val>;
+
+                    // left > 1
+                    if *l_bigrat >= BigRational::one() {
+                        if v.0 != Sign::Minus {
+                            if v.1.len() > 1 {
+                                panic!("Exponent is too large to compute")
+                            } else {
+                                res = Box::new(l_bigrat.pow(v.1[0]))
+                            }
+                        } else {
+                            if v.1.len() > 1 {
+                                // approximate with result=0
+                                res = Box::new(BigInt::zero())
+                            } else {
+                                res = Box::new(l_bigrat.pow(v.1[0]).recip())
+                            }
+                        }
+                    // 0 < left < 1
+                    } else if *l_bigrat > BigRational::zero() {
+                        if v.0 != Sign::Minus {
+                            if v.1.len() > 1 {
+                                // approximate with result=0
+                                res = Box::new(BigInt::zero())
+                            } else {
+                                res = Box::new(l_bigrat.pow(v.1[0]))
+                            }
+                        } else {
+                            if v.1.len() > 1 {
+                                panic!("Exponent is too large to compute")
+                            } else {
+                                res = Box::new(l_bigrat.pow(v.1[0]).recip())
+                            }
+                        }
+                    // left == 0
+                    } else if *l_bigrat == BigRational::zero() {
+                        if v.0 != Sign::Minus {
+                            if v.1.len() > 1 {
+                                res = Box::new(BigInt::zero())
+                            } else {
+                                res = Box::new(l_bigrat.pow(v.1[0]))
+                            }
+                        } else {
+                            panic!("Base of negative exponent cannot be '0'")
+                        }
+                    // -1 < left < 0
+                    } else if *l_bigrat > BigRational::one().neg() {
+                        if v.0 != Sign::Minus {
+                            if v.1.len() > 1 {
+                                // approx with result=0
+                                res = Box::new(BigInt::zero())
+                            } else {
+                                res = Box::new(l_bigrat.pow(v.1[0]))
+                            }
+                        } else {
+                            if v.1.len() > 1 {
+                                panic!("Exponent too large to compute")
+                            } else {
+                                res = Box::new(l_bigrat.pow(v.1[0]).recip())
+                            }
+                        }
+                    // left == -1 : flips between 1 and -1
+                    } else if *l_bigrat == BigRational::one().neg() {
+                        if *r_bigint % 2 == BigInt::zero() {
+                            res = Box::new(BigInt::one())
+                        } else {
+                            res = Box::new(BigInt::one().neg())
+                        }
+                    // left < -1
+                    } else {
+                        if v.0 != Sign::Minus {
+                            if v.1.len() > 1 {
+                                panic!("Exponent too large to compute")
+                            } else {
+                                res = Box::new(l_bigrat.pow(v.1[0]))
+                            }
+                        } else {
+                            if v.1.len() > 1 {
+                                // approx with result=0
+                                res = Box::new(BigInt::zero())
+                            } else {
+                                res = Box::new(l_bigrat.pow(v.1[0]).recip())
+                            }
+                        }
+                    }
+
+                    res
+                // Exponentiating BigRational
+                } else if let Ok(r_bigrat) = right.downcast::<BigRational>() {
+                    todo!()
+                // Exponentiating Complex
+                } else if let Ok(r_complex) = right.downcast::<Complex<BigRational>>() {
+                    todo!()
+                // Exponentiating Bools
+                } else if let Ok(bool) = right.downcast::<bool>() {
+                    Box::new(l_bigrat.pow(*bool as u32))
+                } else {
+                    panic!("Cannot apply binary operator '^'")
+                }
+            // Complex ^ _
+            } else if let Ok(l_complex) = left.downcast::<Complex<BigRational>>() {
+                // Dividing BigInt
+                if let Ok(r_bigint) = right.downcast::<BigInt>() {
+                    todo!()
+                // Dividing BigRational
+                } else if let Ok(r_bigrat) = right.downcast::<BigRational>() {
+                    todo!()
+                // Exponentiating Complex
+                } else if let Ok(r_complex) = right.downcast::<Complex<BigRational>>() {
+                    todo!()
+                // Exponentiating Bools
+                } else if let Ok(_) = right.downcast::<bool>() {
                     todo!()
                 } else {
-                    panic!("'{right}' is not in 'Nat'");
+                    panic!("Cannot apply binary operator '^'")
                 }
+            // Cannot use division with booleans
+            } else if let Ok(_) = left.downcast::<bool>() {
+                panic!("Cannot use division with booleans")
             } else {
-                todo!()
+                panic!("Cannot apply binary operator '/'")
             }
         }
+    }
 
     fn execute_set(&mut self, exprs: &[Box<dyn Expr>]) -> Box<dyn Val> {
         let mut set = HashSet::<Box<dyn Val>>::new();

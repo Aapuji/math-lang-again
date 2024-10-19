@@ -310,6 +310,18 @@ impl Set for InfiniteSet {
             }
 
             Self::Complex => other.is_num(), // as of now, Complex is the all-encompassing numeric type. Perhaps in future this will be changed. Perhaps a Num class or smth. Also, there may be other number types as well, like Alg, Even, Odd, etc.
+
+            Self::Str => if other.is_str() {
+                if let Some(_) = other.downcast_ref::<String>() {
+                    true
+                } else {
+                    false
+                }
+            } else {
+                // todo, allow for casting to string
+                // perhapse, can_str for can be casted to str
+                false
+            }
             _ => todo!()
         }
     }
