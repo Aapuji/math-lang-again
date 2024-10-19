@@ -27,7 +27,7 @@ impl dyn Val {
     }
 
     pub fn display(&self) -> String {
-        format!("{}", self)
+        format!("{self}")
     }
 }
 
@@ -214,7 +214,7 @@ impl Val for bool {
 #[derive(Debug, Clone)]
 pub struct Tuple(pub Vec<Box<dyn Val>>);
 
-impl fmt::Display for Tuple {
+impl Display for Tuple {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[")?;
         

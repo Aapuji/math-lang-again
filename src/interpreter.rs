@@ -40,15 +40,17 @@ pub struct Interpreter {
 
 impl Interpreter {
     pub fn new() -> Self {
-        let mut symbols = HashMap::new();
-
-        // insert_symbol!(self, "Int", Int);
-        // insert_symbol!(self, "Real", Real);
-        
-        Self { 
-            symbols,
+        let mut this = Self { 
+            symbols: HashMap::new(),
             set_pool: SetPool::new()
-        }
+        };
+
+        this.insert_sym(String::from("Nat"), Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Nat))));
+        this.insert_sym(String::from("Int"), Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Int))));
+        this.insert_sym(String::from("Real"), Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Real))));
+        this.insert_sym(String::from("Complex"), Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Nat))));
+
+        this
     }
 
     fn is_sym_assigned(&self, name: &str) -> bool {

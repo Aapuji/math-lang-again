@@ -4,6 +4,9 @@ use std::fmt::{self};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::rc::Rc;
 
+use num::bigint::{self, Sign};
+use num::{BigInt, BigRational, Complex, Zero};
+
 use crate::iter::ValIterator;
 use crate::value::Val;
 
@@ -102,6 +105,7 @@ impl Set for CanonSet {
     fn contains(&self, other: &Box<dyn Val>) -> bool {
         match self {
             Self::Finite(set) => set.contains(other),
+            Self::Infinite(set) => set.contains(other),
 
             _ => todo!()
         }
@@ -257,6 +261,55 @@ impl Set for InfiniteSet {
 
     fn contains(&self, other: &Box<dyn Val>) -> bool {
         match self {
+            Self::Nat => if other.is_num() {
+                if let Some(bigint) = other.downcast_ref::<BigInt>() {
+                    bigint.sign() != Sign::Minus
+                } else if let Some(bigrat) = other.downcast_ref::<BigRational>() {
+                    bigrat.is_integer() && bigrat.numer().sign() != Sign::Minus
+                } else if let Some(complex) = other.downcast_ref::<Complex<BigRational>>() {
+                    complex.im == BigRational::zero() && complex.re.is_integer() && complex.re.numer().sign() != Sign::Minus
+                } else if let Some(_) = other.downcast_ref::<bool>() {
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+
+            Self::Int => if other.is_num() {
+                if let Some(_) = other.downcast_ref::<BigInt>() {
+                    true
+                } else if let Some(bigrat) = other.downcast_ref::<BigRational>() {
+                    bigrat.is_integer()
+                } else if let Some(complex) = other.downcast_ref::<Complex<BigRational>>() {
+                    complex.im == BigRational::zero() && complex.re.is_integer()
+                } else if let Some(_) = other.downcast_ref::<bool>() {
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+
+            Self::Real => if other.is_num() {
+                if let Some(_) = other.downcast_ref::<BigInt>() {
+                    true
+                } else if let Some(_) = other.downcast_ref::<BigRational>() {
+                    true
+                } else if let Some(complex) = other.downcast_ref::<Complex<BigRational>>() {
+                    complex.im == BigRational::zero()
+                } else if let Some(_) = other.downcast_ref::<bool>() {
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+
+            Self::Complex => other.is_num(), // as of now, Complex is the all-encompassing numeric type. Perhaps in future this will be changed. Perhaps a Num class or smth. Also, there may be other number types as well, like Alg, Even, Odd, etc.
             _ => todo!()
         }
     }
