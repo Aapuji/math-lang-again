@@ -1,6 +1,6 @@
 use std::any::Any;
 use std::collections::HashSet;
-use std::fmt::{self};
+use std::fmt::{self, Debug};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::rc::Rc;
 
@@ -213,6 +213,7 @@ impl Set for FiniteSet {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum InfiniteSet {
+    Univ,
     Nat,
     Int,
     Real,
@@ -223,6 +224,7 @@ pub enum InfiniteSet {
 impl InfiniteSet {
     pub fn name(&self) -> String {
         String::from(match self {
+            Self::Univ => "Univ",
             Self::Nat => "Nat",
             Self::Int => "Int",
             Self::Real => "Real",
@@ -261,6 +263,7 @@ impl Set for InfiniteSet {
 
     fn contains(&self, other: &Box<dyn Val>) -> bool {
         match self {
+            Self::Univ => true,
             Self::Nat => if other.is_num() {
                 if let Some(bigint) = other.downcast_ref::<BigInt>() {
                     bigint.sign() != Sign::Minus

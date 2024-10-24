@@ -126,9 +126,16 @@ impl<'t> Parser<'t> {
         if self.match_next(&[&TokenKind::Colon]) {
             self.next();
 
-            let right = self.parse_or();
+            let right =self.parse_or();
 
-            return Box::new(TypeExpr(expr, right)) // Could be a cast (x : Int AFTER x is defined) or a type-declaration (x : Int BEFORE x is defined)
+            if self.match_next(&[&TokenKind::SmallArrow]) {
+                self.next();
+                let codomain = self.parse_or();
+
+                return Box::new(FuncTypeExpr(expr, vec![right], codomain))
+            } else {
+                return Box::new(TypeExpr(expr, right)) // Could be a cast (x : Int AFTER x is defined) or a type-declaration (x : Int BEFORE x is defined)
+            }
         }
 
         expr

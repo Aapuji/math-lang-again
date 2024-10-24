@@ -8,7 +8,7 @@ use num::pow::Pow;
 use crate::ast::{expr, expr::*, stmt::*};
 use crate::set::{self, canon, CanonSet, FiniteSet, InfiniteSet, Set, SetPool};
 use crate::token::TokenKind;
-use crate::value::{Tuple, Val};
+use crate::value::{Func, FuncArg, Tuple, Val};
 
 /// What the symbol map stores.
 /// 
@@ -17,6 +17,7 @@ use crate::value::{Tuple, Val};
 enum SymStore {
     Value(Box<dyn Val>),
     Type(Rc<CanonSet>),
+    FuncType(Vec<FuncArg>, Rc<CanonSet>)
 }
 
 impl SymStore {
@@ -25,14 +26,9 @@ impl SymStore {
         match self {
             Self::Value(value) => set.contains(value),
             Self::Type(typeset) => typeset.is_subset(&set),
+            Self::FuncType(_, _) => false // todo
         }
     }
-}
-
-macro_rules! insert_symbol {
-    ( $self:ident , $name:expr , $struct_n:ident ) => {
-        $self.insert(String::from($name), SymStore::Value(Box::new($struct_n::new())));
-    };
 }
 
 #[derive(Debug)]
@@ -47,6 +43,10 @@ impl Interpreter {
             symbols: HashMap::new(),
             set_pool: SetPool::new()
         };
+
+        // All-encompassing Types
+        this.insert_sym(String::from("Univ"), Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Univ))));
+        this.insert_sym(String::from("Empty"), Box::new(Rc::new(CanonSet::Finite(FiniteSet::new(HashSet::new())))));
 
         // Numeric Types (implementing class Num?)
         this.insert_sym(String::from("Nat"), Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Nat))));
@@ -63,7 +63,6 @@ impl Interpreter {
     fn is_sym_assigned(&self, name: &str) -> bool {
         match self.symbols.get(name) {
             Some(SymStore::Value(_)) => true,
-            Some(SymStore::Type(_)) => false,
             _ => false
         }
     }
@@ -82,6 +81,13 @@ impl Interpreter {
         self.symbols.insert(
             name, 
             SymStore::Type(self.set_pool.intern(set))
+        );
+    }
+
+    fn insert_sym_func_type(&mut self, name: String, args: Vec<FuncArg>, codomain: Rc<CanonSet>) {
+        self.symbols.insert(
+            name,
+            SymStore::FuncType(args, codomain)
         );
     }
 
@@ -117,6 +123,22 @@ impl Interpreter {
 
                 // type cast
                 println!("{}", todo!());
+            
+            // } else if let Some(FuncTypeExpr(value, domain_arg_t, codomain)) = expr.downcast_ref() {
+            //     if let Some(Symbol(name)) = value.downcast_ref() {
+            //         if !self.is_sym_assigned(name) {
+            //             let domain = self.execute_expr(&domain_arg_t[0]);
+            //             let codomain = self.execute_expr(codomain);
+
+            //             if let Some(domset) = domain.downcast_ref::<Rc<CanonSet>>() {
+            //                 self.insert_sym_type(name, set);
+            //             }
+            //         }
+            //     }
+
+            //     // function type cast (perhaps for classes?)
+            //     // eg maybe this?: f : impl [+ : A, A -> A], A -> A; f(a1, a2) = a1+a2; g : Int -> Int; g(x) = f : Int -> Int;
+            //     println!("{}", todo!())
             } else {
                 println!("{}", self.execute_expr(expr));
             }
@@ -162,6 +184,8 @@ impl Interpreter {
                 .collect::<Vec<Box<dyn Val>>>()))
         } else if let Some(expr::Set(values)) = expr.downcast_ref() {
             self.execute_set(values)
+        } else if let Some(func @ expr::Func(_, _)) = expr.downcast_ref() {
+            Box::new(Func::from(func))
         } else {
             todo!()
         }
@@ -628,10 +652,9 @@ impl Interpreter {
             set.insert(self.execute_expr(expr));
         }
 
-        Box::new(self.set_pool.intern(Rc::new(CanonSet::Finite(FiniteSet::new(set)))))
+        Box::new(Rc::new(CanonSet::Finite(FiniteSet::new(set))))
     }
 
-    // In future, return a result of whether it assigned or not?
     fn execute_assign(&mut self, name: &str, right: &Box<dyn Expr>) {
         if self.is_sym_assigned(name) {
             panic!("Variable {name} cannot be reassigned")
@@ -639,6 +662,15 @@ impl Interpreter {
 
         let right = self.execute_expr(right);
 
+        if let Some(_) = right.downcast_ref::<Func>() {
+            self.insert_sym(
+                name.to_owned(),
+                right
+            );
+
+            return;
+        }
+        
         if let Some(SymStore::Type(typeset)) = self.symbols.get(name) {
             if !typeset.contains(&right) {
                 panic!("'{name}' is in '{typeset}' which does not contain '{right}'")

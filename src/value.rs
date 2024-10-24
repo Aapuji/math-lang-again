@@ -1,7 +1,11 @@
 use std::any::Any;
 use std::fmt::{self, Debug, Display};
 use std::hash::{Hash, Hasher};
+use std::rc::Rc;
 use num::{BigInt, BigRational, Complex};
+
+use crate::ast::expr::{Expr, Symbol};
+use crate::set::CanonSet;
 
 pub trait Val: Any + Debug + Display + CloneBox {
     fn compare(&self, other: &dyn Val) -> bool;
@@ -258,3 +262,99 @@ impl Val for Tuple {
         Box::new(self.to_owned())
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct Func {
+    args: Vec<FuncArg>,
+    expr: Box<dyn Expr>
+}
+
+impl Func {
+    
+}
+
+impl From<&crate::ast::expr::Func> for Func {
+    fn from(value: &crate::ast::expr::Func) -> Self {
+        Self {
+            args: value.0
+                .clone()
+                .into_iter()
+                .map(|sym| FuncArg::Naive(sym.0))
+                .collect(),
+            expr: value.1.clone()
+        }
+    }
+}
+
+impl Display for Func {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.args.len() == 1 {
+            write!(f, "{} -> ", self.args[0])
+        } else {
+            let mut s = String::from("(");
+
+            for (i, a) in self.args.iter().enumerate() {
+                if i == self.args.len() - 1 {
+                    s.push_str(&format!("{}", a));
+                } else {
+                    s.push_str(&format!("{}, ", a));
+                }
+            }
+
+            s.push(')');
+
+            write!(f, "{s} -> ")
+        }?;
+
+        write!(f, "{}", "TODO <print expr>")
+    }
+}
+
+impl Hash for Func {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        todo!()
+    }
+}
+
+impl Val for Func {
+    fn compare(&self, other: &dyn Val) -> bool {
+        if let Some(func @ Func { .. }) = other.downcast_ref() {
+            true // todo
+        } else {
+            false
+        }
+    }
+
+    fn hash_val(&self, mut state: &mut dyn Hasher) {
+        self.hash(&mut state);
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_boxed_any(&self) -> Box<dyn Any> {
+        Box::new(self.to_owned())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum FuncArg {
+    Naive(String),
+    Spec(String, Rc<CanonSet>)
+}
+
+impl FuncArg {
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Naive(sym)   |
+            Self::Spec(sym, _) => sym
+        }
+    }
+}
+
+impl Display for FuncArg {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name())
+    }
+} 

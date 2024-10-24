@@ -117,6 +117,7 @@ pub mod expr {
             Tuple(Vec<Box<dyn Expr>>),
             Matrix(Vec<Vec<Box<dyn Expr>>>),
             Set(Vec<Box<dyn Expr>>), // store exprs in a vector, and turn into set when resolving values
-            TypeExpr(Box<dyn Expr>, Box<dyn Expr>) // value, type (2 : Int; msg : Str)
+            TypeExpr(Box<dyn Expr>, Box<dyn Expr>), // value, type (2 : Int; msg : Str)
+            FuncTypeExpr(Box<dyn Expr>, Vec<Box<dyn Expr>>, Box<dyn Expr>) // value, arg types, outtype
     );
 }
