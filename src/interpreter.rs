@@ -6,92 +6,70 @@ use num::{BigInt, BigRational, Complex, One, Zero};
 use num::pow::Pow;
 
 use crate::ast::{expr, expr::*, stmt::*};
-use crate::set::{self, canon, CanonSet, FiniteSet, InfiniteSet, Set, SetPool};
+use crate::environment::{Env, SymStore};
+use crate::set::{canon, CanonSet, FiniteSet, InfiniteSet, Set, SetPool};
 use crate::token::TokenKind;
-use crate::value::{Func, FuncArg, Tuple, Val};
-
-/// What the symbol map stores.
-/// 
-/// If the type is initialized but not the value, then [`SymStore::Type`] is used, but once the value is declared, the type no longer matters, because the variable can't change, and thus [`SymStore::Value`] is enough (type is `{value}`).
-#[derive(Debug)]
-enum SymStore {
-    Value(Box<dyn Val>),
-    Type(Rc<CanonSet>),
-    FuncType(Vec<FuncArg>, Rc<CanonSet>)
-}
-
-impl SymStore {
-    /// Returns if it is a subset of the given set.
-    fn subset_of(&self, set: Rc<CanonSet>) -> bool {
-        match self {
-            Self::Value(value) => set.contains(value),
-            Self::Type(typeset) => typeset.is_subset(&set),
-            Self::FuncType(_, _) => false // todo
-        }
-    }
-}
+use crate::value::{Func, Arg, Tuple, Val};
 
 #[derive(Debug)]
-pub struct Interpreter {
-    symbols: HashMap<String, SymStore>,
+pub struct Interpreter<'t> {
+    global_env: Env<'t>,
     set_pool: SetPool
 }
 
-impl Interpreter {
+impl<'t> Interpreter<'t> {
     pub fn new() -> Self {
-        let mut this = Self { 
-            symbols: HashMap::new(),
-            set_pool: SetPool::new()
-        };
+        let mut set_pool = SetPool::new();
+        let mut env = Env::new(None);
 
         // All-encompassing Types
-        this.insert_sym(String::from("Univ"), Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Univ))));
-        this.insert_sym(String::from("Empty"), Box::new(Rc::new(CanonSet::Finite(FiniteSet::new(HashSet::new())))));
+        env.insert_sym(
+            String::from("Univ"), 
+            Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Univ))),
+            &mut set_pool
+        );
+        env.insert_sym(
+            String::from("Empty"), 
+            Box::new(Rc::new(CanonSet::Finite(FiniteSet::new(HashSet::new())))),
+            &mut set_pool
+        );
 
         // Numeric Types (implementing class Num?)
-        this.insert_sym(String::from("Nat"), Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Nat))));
-        this.insert_sym(String::from("Int"), Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Int))));
-        this.insert_sym(String::from("Real"), Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Real))));
-        this.insert_sym(String::from("Complex"), Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Complex))));
+        env.insert_sym(
+            String::from("Nat"), 
+            Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Nat))),
+            &mut set_pool
+        );
+        env.insert_sym(
+            String::from("Int"), 
+            Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Int))),
+            &mut set_pool
+        );
+        env.insert_sym(
+            String::from("Real"), 
+            Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Real))),
+            &mut set_pool
+        );
+        env.insert_sym(
+            String::from("Complex"), 
+            Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Complex))),
+            &mut set_pool
+        );
 
         // Text Types (implementing class Text?)
-        this.insert_sym(String::from("Str"), Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Str))));
+        env.insert_sym(
+            String::from("Str"), 
+            Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Str))),
+            &mut set_pool
+        );
 
-        this
-    }
-
-    fn is_sym_assigned(&self, name: &str) -> bool {
-        match self.symbols.get(name) {
-            Some(SymStore::Value(_)) => true,
-            _ => false
+        Self {
+            global_env: env,
+            set_pool
         }
     }
 
-    fn insert_sym(&mut self, name: String, value: Box<dyn Val>) {
-        let value = if let Some(set) = value.downcast_ref::<Rc<CanonSet>>() {
-            Box::new(self.set_pool.intern(canon(Rc::clone(set))))
-        } else {
-            value
-        };
-
-        self.symbols.insert(name, SymStore::Value(value));
-    }
-
-    fn insert_sym_type(&mut self, name: String, set: Rc<CanonSet>) {
-        self.symbols.insert(
-            name, 
-            SymStore::Type(self.set_pool.intern(set))
-        );
-    }
-
-    fn insert_sym_func_type(&mut self, name: String, args: Vec<FuncArg>, codomain: Rc<CanonSet>) {
-        self.symbols.insert(
-            name,
-            SymStore::FuncType(args, codomain)
-        );
-    }
-
-    pub fn interpret<'t>(&mut self, stmts: &'t [Box<dyn Stmt>]) {
+    pub fn interpret<'s>(&mut self, stmts: &'s [Box<dyn Stmt>]) {
         for stmt in stmts {
             self.execute_stmt(stmt);
         }
@@ -108,12 +86,12 @@ impl Interpreter {
             // type expr : typecast or typedef
             } else if let Some(TypeExpr(value, typeset)) = expr.downcast_ref() {
                 if let Some(Symbol(name)) = value.downcast_ref() {
-                    if !self.is_sym_assigned(name) {
+                    if !self.global_env.is_sym_assigned(name) {
                         let typeset = self.execute_expr(typeset);
 
                         // type def
                         if let Some(set) = typeset.downcast_ref::<Rc<CanonSet>>() {
-                            self.insert_sym_type(name.to_owned(), Rc::clone(set));
+                            self.global_env.insert_sym_type(name.to_owned(), Rc::clone(set), &mut self.set_pool);
                             return;
                         } else {
                             panic!("'{typeset}' is not a set")
@@ -151,7 +129,7 @@ impl Interpreter {
         if let Some(Literal(lit)) = expr.downcast_ref() {
             Self::execute_literal(lit)
         } else if let Some(Symbol(name)) = expr.downcast_ref() {
-            if let Some(SymStore::Value(value)) = self.symbols.get(name) {
+            if let Some(SymStore::Value(value)) = self.global_env.get(name) {
                 value.clone()
             } else {
                 panic!("Variable '{name}' is not defined");
@@ -185,7 +163,7 @@ impl Interpreter {
         } else if let Some(expr::Set(values)) = expr.downcast_ref() {
             self.execute_set(values)
         } else if let Some(func @ expr::Func(_, _)) = expr.downcast_ref() {
-            Box::new(Func::from(func))
+            Box::new(Func::from_func_expr(func, &mut self.global_env))
         } else {
             todo!()
         }
@@ -656,35 +634,37 @@ impl Interpreter {
     }
 
     fn execute_assign(&mut self, name: &str, right: &Box<dyn Expr>) {
-        if self.is_sym_assigned(name) {
+        if self.global_env.is_sym_assigned(name) {
             panic!("Variable {name} cannot be reassigned")
         }
 
         let right = self.execute_expr(right);
 
         if let Some(_) = right.downcast_ref::<Func>() {
-            self.insert_sym(
+            self.global_env.insert_sym(
                 name.to_owned(),
-                right
+                right,
+                &mut self.set_pool
             );
 
             return;
         }
         
-        if let Some(SymStore::Type(typeset)) = self.symbols.get(name) {
+        if let Some(SymStore::Type(typeset)) = self.global_env.get(name) {
             if !typeset.contains(&right) {
                 panic!("'{name}' is in '{typeset}' which does not contain '{right}'")
             }
         }
 
-        self.insert_sym(
+        self.global_env.insert_sym(
             name.to_owned(),
-            right
+            right,
+            &mut self.set_pool
         );
     }
 
     fn execute_typed_assign(&mut self, name: &str, typeset: &Box<dyn Expr>, right: &Box<dyn Expr>) {
-        if self.is_sym_assigned(name) {
+        if self.global_env.is_sym_assigned(name) {
             panic!("Variable '{name}' cannot be reassigned")
         }
 
@@ -694,7 +674,7 @@ impl Interpreter {
             let value = self.execute_expr(right);
 
             if set.contains(&value) {
-                self.insert_sym(name.to_owned(), value);
+                self.global_env.insert_sym(name.to_owned(), value, &mut self.set_pool);
             } else {
                 panic!("Incompatible types: '{value}' cannot be cast into '{typeset}'");
             }

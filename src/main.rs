@@ -1,5 +1,6 @@
 mod ast;
 mod config;
+mod environment;
 mod error;
 mod interpreter;
 mod iter;

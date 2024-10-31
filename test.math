@@ -1,1 +1,1 @@
-f(baby, guy) = baby + guy; f
+f(x, y) = x * y ^ 2 / (1 + x^2); f
