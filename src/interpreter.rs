@@ -9,7 +9,7 @@ use num::pow::Pow;
 use crate::ast::{expr, expr::*, stmt::*};
 use crate::environment::{Env, SymStore};
 use crate::set::{self, canon, CanonSet, FiniteSet, InfiniteSet, Set, SetPool};
-use crate::token::TokenKind;
+use crate::token::{Token, TokenKind};
 use crate::value::{Func, Arg, Tuple, Val};
 
 #[derive(Debug)]
@@ -151,6 +151,14 @@ impl Interpreter {
         } else if let Some(Unary(op, right)) = expr.downcast_ref() {
             let right = self.execute_expr(right);
 
+            if let Some(func) = right.downcast_ref::<Func>() {
+                return Box::new(Func::new(
+                    Rc::clone(func.env()), 
+                    func.args(), 
+                    Box::new(Unary(op.clone(), Box::new(Group(func.expr().to_owned()))))
+                ));
+            }
+
             match op.kind() {
                 &TokenKind::Minus => Self::execute_neg(&right),
                 _ => todo!()
@@ -158,6 +166,55 @@ impl Interpreter {
         } else if let Some(Binary(left, op, right)) = expr.downcast_ref() {
             let left = self.execute_expr(left);
             let right = self.execute_expr(right);
+
+            if let Some(l_func) = left.downcast_ref::<Func>() {
+                // right is a function
+                if let Some(r_func) = right.downcast_ref::<Func>() {
+                    if l_func.arity() == r_func.arity() {
+                        let mut new_expr = r_func.expr().to_owned();
+                        Self::substitute_symbols(
+                            &mut new_expr, 
+                            &r_func.args().iter().map(|s| s.as_str()).collect::<Vec<_>>()[..], 
+                            l_func.args()
+                        );
+
+                        return Box::new(Func::new(
+                            Rc::clone(l_func.env()),
+                            l_func.args(),
+                            Box::new(Binary(
+                                Box::new(Group(l_func.expr().to_owned())),
+                                op.to_owned(),
+                                Box::new(Group(new_expr))
+                            ))
+                        ))
+                    } else {
+                        panic!("Function shorthand can only be used with functions with the same arity.")
+                    }
+                }
+
+                // right is not a function
+                return Box::new(Func::new(
+                    Rc::clone(l_func.env()),
+                    l_func.args(),
+                    Box::new(Binary(
+                        Box::new(Group(l_func.expr().to_owned())),
+                        op.to_owned(),
+                        Box::new(Literal(right))
+                    ))
+                ))
+            } else if let Some(r_func) = right.downcast_ref::<Func>() {
+                // left is not a function
+                return Box::new(Func::new(
+                    Rc::clone(r_func.env()),
+                    r_func.args(),
+                    Box::new(Binary(
+                        Box::new(Literal(left)),
+                        op.to_owned(),
+                        Box::new(Group(r_func.expr().to_owned()))
+
+                    ))
+                ))
+            }
 
             match op.kind() {
                 &TokenKind::Plus    => Self::execute_sum(&left, &right),
@@ -248,6 +305,62 @@ impl Interpreter {
         }
     }
 
+    /// Substitutes all instances of symbols in `find_args` with their corresponding symbol in `replace_with`.
+    /// 
+    /// Thus, `find_args.len() == replace_with.len()`.
+    fn substitute_symbols(expr: &mut Box<dyn Expr>, find_args: &[&str], replace_with: &[String]) {
+        if let Some(_) = expr.downcast_ref::<Literal>() {
+            ()
+        } else if let Some(symbol) = expr.downcast_mut::<Symbol>() {
+            if let Some(i) = find_args.iter().position(|name| name == &symbol.0) {
+                symbol.0 = replace_with[i].clone()
+            }
+        } else if let Some(Group(inner)) = expr.downcast_mut() {
+            Self::substitute_symbols(inner, find_args, replace_with);
+        } else if let Some(Unary(_, operand)) = expr.downcast_mut() {
+            Self::substitute_symbols(operand, find_args, replace_with);
+        } else if let Some(Binary(left, _, right)) = expr.downcast_mut() {
+            Self::substitute_symbols(left, find_args, replace_with);
+            Self::substitute_symbols(right, find_args, replace_with);
+        } else if let Some(Call(func, args)) = expr.downcast_mut() {
+            Self::substitute_symbols(func, find_args, replace_with);
+
+            for arg in args.iter_mut() {
+                if let Some(actual) = arg {
+                    Self::substitute_symbols(actual, find_args, replace_with);
+                }
+            }
+        } else if let Some(expr::Func(args, inner)) = expr.downcast_mut() {
+            let mut new_find_args: Vec<&str> = Vec::with_capacity(find_args.len());
+            let mut new_replace_with = Vec::with_capacity(replace_with.len());
+            
+            for (i, arg) in find_args.iter().enumerate() {
+                if let Some(_) = args.iter().position(|a| a.0 == *arg) {
+                    ()
+                } else {
+                    new_find_args.push(arg);
+                    new_replace_with.push(replace_with[i].clone())
+                }
+            }
+
+            Self::substitute_symbols(inner, &new_find_args[..], &new_replace_with);
+        } else if let Some(expr::Tuple(exprs)) = expr.downcast_mut() {
+            for x in exprs {
+                Self::substitute_symbols(x, find_args, replace_with);
+            }
+        } else if let Some(Matrix(mat)) = expr.downcast_mut() {
+            for row in mat {
+                for x in row {
+                    Self::substitute_symbols(x, find_args, replace_with);
+                }
+            }
+        } else if let Some(_) = expr.downcast_mut::<expr::Set>() {
+            todo!() // may get a bit weird?
+        } else {
+            todo!()
+        }
+    }
+
     fn execute_literal(lit: &Box<dyn Val>) -> Box<dyn Val> {
         if let Ok(bigint) = lit.downcast::<BigInt>() {
             bigint
@@ -265,6 +378,7 @@ impl Interpreter {
     }
 
     fn execute_neg(right: &Box<dyn Val>) -> Box<dyn Val> {
+        // Numbers -x
         if let Some(bigint) = right.downcast_ref::<BigInt>() {
             Box::new(-bigint)
         } else if let Some(bigrat) = right.downcast_ref::<BigRational>() {

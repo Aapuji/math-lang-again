@@ -2,6 +2,7 @@ use std::borrow::Borrow;
 use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::fmt;
+use std::ops::BitOr;
 use std::rc::Rc;
 
 use crate::set::{canon, CanonSet, Set, SetPool};

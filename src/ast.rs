@@ -37,6 +37,10 @@ macro_rules! create_structs {
                 fn as_any(&self) -> &dyn Any {
                     self
                 }
+
+                fn as_any_mut(&mut self) -> &mut dyn Any {
+                    self
+                }
             }
         )*
     };
@@ -50,6 +54,7 @@ pub mod stmt {
 
     pub trait Stmt : Any + Debug {
         fn as_any(&self) -> &dyn Any;
+        fn as_any_mut(&mut self) -> &mut dyn Any;
     }
     
     impl dyn Stmt {
@@ -57,6 +62,9 @@ pub mod stmt {
             self.as_any().downcast_ref::<T>()
         }
 
+        pub fn downcast_mut<T: Stmt>(&mut self) -> Option<&mut T> {
+            self.as_any_mut().downcast_mut::<T>()
+        }
     }
 
     create_structs!(
@@ -77,11 +85,16 @@ pub mod expr {
 
     pub trait Expr : Any + Debug + CloneExpr {
         fn as_any(&self) -> &dyn Any;
+        fn as_any_mut(&mut self) -> &mut dyn Any;
     }
     
     impl dyn Expr {
         pub fn downcast_ref<T: Expr>(&self) -> Option<&T> {
             self.as_any().downcast_ref::<T>()
+        }
+
+        pub fn downcast_mut<T: Expr>(&mut self) -> Option<&mut T> {
+            self.as_any_mut().downcast_mut::<T>()
         }
     }
 

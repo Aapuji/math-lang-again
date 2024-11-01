@@ -6,7 +6,7 @@ use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use num::{BigInt, BigRational, Complex};
 
-use crate::ast::expr::{self, Expr, Symbol};
+use crate::ast::expr::{self, Binary, Call, Expr, Group, Literal, Matrix, Symbol, Unary};
 use crate::environment::{Env, SymStore};
 use crate::interpreter::Interpreter;
 use crate::set::{self, CanonSet, Set, SetPool};
@@ -275,6 +275,41 @@ pub struct Func {
 }
 
 impl Func {
+    pub fn new(env: Rc<RefCell<Env>>, arg_names: &[String], expr: Box<dyn Expr>) -> Self {
+        Self {
+            env,
+            arg_names: arg_names.to_owned(),
+            expr
+        }
+    }
+
+    pub fn from_func_expr(value: &expr::Func, parent: Rc<RefCell<Env>>, set_pool: &mut SetPool) -> Self {
+        let mut arg_names = Vec::with_capacity(value.0.len());
+        let mut env = Env::new(Some(Rc::clone(&parent)));
+        
+        for sym in &value.0 {
+            env.insert_sym_type(sym.0.to_owned(), parent.borrow().get_set("Univ").unwrap(), set_pool);
+            arg_names.push(sym.0.to_owned());
+        }
+
+        Self {
+            env: Rc::new(RefCell::new(env)),
+            arg_names,
+            expr: value.1.to_owned()
+        }
+    }
+
+    pub fn merge_into(&self, other: &Self) {
+        assert!(self.arity() == other.arity());
+
+        // TODO: check if the types of the args match. (perhaps find the intersection of the corresp two?)
+
+        let mut expr = self.expr.clone();
+
+        
+
+    }
+
     pub fn call(&self, args: &[Option<Box<dyn Val>>], set_pool: &mut SetPool) -> Box<dyn Val> {
         if args.len() > self.arity() {
             panic!("Too many arguments")
@@ -323,28 +358,16 @@ impl Func {
         self.arg_names.len()
     }
 
+    pub fn env(&self) -> &Rc<RefCell<Env>> {
+        &self.env
+    }
+
     pub fn args(&self) -> &[String] {
         &self.arg_names
     }
 
     pub fn expr(&self) -> &Box<dyn Expr> {
         &self.expr
-    }
-
-    pub fn from_func_expr(value: &expr::Func, parent: Rc<RefCell<Env>>, set_pool: &mut SetPool) -> Self {
-        let mut arg_names = Vec::with_capacity(value.0.len());
-        let mut env = Env::new(Some(Rc::clone(&parent)));
-        
-        for sym in &value.0 {
-            env.insert_sym_type(sym.0.to_owned(), parent.borrow().get_set("Univ").unwrap(), set_pool);
-            arg_names.push(sym.0.to_owned());
-        }
-
-        Self {
-            env: Rc::new(RefCell::new(env)),
-            arg_names,
-            expr: value.1.to_owned()
-        }
     }
 }
 
