@@ -322,7 +322,7 @@ impl<'t> Parser<'t> {
                 self.match_next(&[&TokenKind::Comma])
             } else {
                 args.push(None);
-                
+
                 true
             }
         } {}
@@ -333,7 +333,11 @@ impl<'t> Parser<'t> {
             panic!("Expected ')' after arguments");
         }
 
-        Box::new(Call(callee, args))
+        if self.match_next(&[&TokenKind::OpenParen]) {
+            self.finish_call(Box::new(Call(callee, args)))
+        } else {
+            Box::new(Call(callee, args))
+        }
     }
 
     fn parse_primary(&mut self) -> Box<dyn Expr> {

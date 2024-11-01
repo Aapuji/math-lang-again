@@ -194,6 +194,54 @@ impl Interpreter {
         }
     }
 
+    /// Is similar to [`Interpreter::execute_expr`], but doesn't actually execute any expression, but instead just replaces all symbols that aren't in the given `symbols` slice with their actual values.
+    pub fn curry_expr<'a>(&mut self, expr: &'a Box<dyn Expr>, symbols: &[&str]) -> Box<dyn Expr> {
+        if let Some(Literal(lit)) = expr.downcast_ref() {
+            expr.to_owned()
+        } else if let Some(Symbol(name)) = expr.downcast_ref() {
+            if let Some(SymStore::Value(value)) = self.env.borrow().get(name) {
+                if !symbols.contains(&name.as_str()) {
+                    Box::new(Literal(value.clone()))
+                } else {
+                    expr.clone()
+                }
+            } else {
+                expr.clone()
+            }
+        } else if let Some(Group(expr)) = expr.downcast_ref::<Group>() {
+            self.curry_expr(expr, symbols)
+        } else if let Some(Unary(op, right)) = expr.downcast_ref() {
+            Box::new(Unary(op.to_owned(), self.curry_expr(right, symbols)))
+        } else if let Some(Binary(left, op, right)) = expr.downcast_ref() {
+            Box::new(Binary(self.curry_expr(left, symbols), op.to_owned(), self.curry_expr(right, symbols)))
+        } else if let Some(expr::Tuple(exprs)) = expr.downcast_ref() {
+            Box::new(expr::Tuple(exprs
+                .iter()
+                .map(|expr| self.curry_expr(expr, symbols))
+                .collect::<Vec<Box<dyn Expr>>>()))
+        } else if let Some(expr::Set(values)) = expr.downcast_ref() {
+            Box::new(expr::Set(values.iter().map(|x| self.curry_expr(x, symbols)).collect()))
+        } else if let Some(expr::Func(args, result)) = expr.downcast_ref::<expr::Func>() {
+            todo!() // this may be a bit more compelx
+
+            // Box::new(Func::from_func_expr(func, Rc::clone(&self.env), &mut self.set_pool))
+        } else if let Some(Call(func_expr, arg_exprs)) = expr.downcast_ref() {
+            let curry_func_expr = self.curry_expr(func_expr, symbols);
+            let curry_args = arg_exprs
+                .iter()
+                .map(|a| if let Some(actual) = a {
+                    Some(self.curry_expr(actual, symbols))
+                } else {
+                    None
+                })
+                .collect();
+
+            Box::new(Call(curry_func_expr, curry_args))
+        } else {
+            todo!()
+        }
+    }
+
     fn execute_literal(lit: &Box<dyn Val>) -> Box<dyn Val> {
         if let Ok(bigint) = lit.downcast::<BigInt>() {
             bigint

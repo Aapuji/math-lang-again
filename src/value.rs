@@ -7,7 +7,7 @@ use std::rc::Rc;
 use num::{BigInt, BigRational, Complex};
 
 use crate::ast::expr::{self, Expr, Symbol};
-use crate::environment::Env;
+use crate::environment::{Env, SymStore};
 use crate::interpreter::Interpreter;
 use crate::set::{self, CanonSet, Set, SetPool};
 
@@ -280,15 +280,34 @@ impl Func {
             panic!("Too many arguments")
         }
 
+        let mut curried_args = vec![];
+
         for (i, arg) in args.iter().enumerate() {
             if let Some(val) = arg {
                 self.env.borrow_mut().insert_sym(self.arg_names[i].clone(), val.to_owned(), set_pool);
             } else {
-                todo!()
+                curried_args.push(self.arg_names[i].clone());
+            }
+        }
+
+        if args.len() < self.arity() {
+            for i in args.len()..self.arity() {
+                curried_args.push(self.arg_names[i].clone());
             }
         }
 
         let mut interpreter = Interpreter::with_env(&self.env);
+
+        if curried_args.len() > 0 {
+            return Box::new(
+                Self {
+                    env: Rc::clone(&self.env),
+                    expr: interpreter.curry_expr(&self.expr, &curried_args.iter().map(|s| s.as_str()).collect::<Vec<_>>()),
+                    arg_names: curried_args
+                }
+            )
+        }
+
         interpreter.execute_expr(&self.expr)
     }
 
