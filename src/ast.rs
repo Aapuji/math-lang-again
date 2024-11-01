@@ -61,7 +61,7 @@ pub mod stmt {
 
     create_structs!(
         impl Stmt for
-            ExprStmt(Box<dyn Expr>)
+            ExprStmt(Box<dyn Expr>, bool) // bool is whether or not to log the resultant value.
     );
 }
 

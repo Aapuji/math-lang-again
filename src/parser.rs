@@ -48,19 +48,19 @@ impl<'t> Parser<'t> {
     fn parse_expr_stmt(&mut self) -> Box<dyn Stmt> {
         let expr = self.parse_expr();
 
-        let mut found_endl = false;
+        let mut log_endl = None;
 
         if self.match_next(&[&TokenKind::EOL]) {
             // add log stmt here
-            found_endl = true;
+            log_endl = Some(true);
         }
 
         if self.match_next(&[&TokenKind::Semicolon]) {
-            found_endl = true;
+            log_endl = Some(false);
         }
 
-        if found_endl {
-            Box::new(ExprStmt(expr))
+        if log_endl.is_some() {
+            Box::new(ExprStmt(expr, log_endl.unwrap()))
         } else {
             panic!("Expected ';' or EOL.")
         }

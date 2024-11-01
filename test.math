@@ -1,1 +1,4 @@
-f(x, y, z) = x * y + y * z - x * z; f; g = f(,2); g; h = g(,3); h; answer = h(-1); answer
+
+f(x, y) = x * y - (x + y)
+g = f(,4);
+ans = g(3)

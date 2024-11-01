@@ -84,10 +84,14 @@ impl Interpreter {
     }
 
     pub fn execute_stmt(&mut self, stmt: &Box<dyn Stmt>) {
-        if let Some(ExprStmt(expr)) = stmt.downcast_ref() {
+        if let Some(ExprStmt(expr, is_to_log)) = stmt.downcast_ref() {
             // assign
             if let Some(Assign(Symbol(name), right)) = expr.downcast_ref() {
-                self.execute_assign(name, right);
+                let value = self.execute_assign(name, right);
+
+                if *is_to_log {
+                    println!("{name} = {value}")
+                }
             // typed assign
             } else if let Some(TypedAssign(Symbol(name), typeset, right)) = expr.downcast_ref() {
                 self.execute_typed_assign(name, typeset, right);
@@ -209,7 +213,7 @@ impl Interpreter {
                 expr.clone()
             }
         } else if let Some(Group(expr)) = expr.downcast_ref::<Group>() {
-            self.curry_expr(expr, symbols)
+            Box::new(Group(self.curry_expr(expr, symbols)))
         } else if let Some(Unary(op, right)) = expr.downcast_ref() {
             Box::new(Unary(op.to_owned(), self.curry_expr(right, symbols)))
         } else if let Some(Binary(left, op, right)) = expr.downcast_ref() {
@@ -706,7 +710,7 @@ impl Interpreter {
         Box::new(Rc::new(CanonSet::Finite(FiniteSet::new(set))))
     }
 
-    fn execute_assign(&mut self, name: &str, right: &Box<dyn Expr>) {
+    fn execute_assign(&mut self, name: &str, right: &Box<dyn Expr>) -> Box<dyn Val> {
         if self.env.borrow().is_sym_assigned(name) {
             panic!("Variable {name} cannot be reassigned")
         }
@@ -717,11 +721,11 @@ impl Interpreter {
             // panic!("IN ASS: N {name} R {right}");
             self.env.borrow_mut().insert_sym(
                 name.to_owned(),
-                right,
+                right.clone(),
                 &mut self.set_pool
             );
 
-            return;
+            return right;
         }
         
         if let Some(SymStore::Type(typeset)) = self.env.borrow().get(name) {
@@ -732,9 +736,11 @@ impl Interpreter {
 
         self.env.borrow_mut().insert_sym(
             name.to_owned(),
-            right,
+            right.clone(),
             &mut self.set_pool
         );
+
+        right
     }
 
     fn execute_typed_assign(&mut self, name: &str, typeset: &Box<dyn Expr>, right: &Box<dyn Expr>) {
