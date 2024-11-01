@@ -100,11 +100,15 @@ pub mod expr {
             } else if let Some(Call(caller, args)) = self.downcast_ref() {
                 write!(f, "{}(", caller)?;
 
-                for arg in args {
+                for (i, arg) in args.iter().enumerate() {
                     if let Some(actual) = arg {
                         write!(f, "{actual}")?
                     } else {
                         write!(f, "")?
+                    }
+
+                    if i < args.len() - 1 {
+                        write!(f, ", ")?
                     }
                 }
 

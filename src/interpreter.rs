@@ -209,8 +209,10 @@ impl Interpreter {
                 } else {
                     expr.clone()
                 }
-            } else {
+            } else if let Some(SymStore::Type(_)) = self.env.borrow().get(name) {
                 expr.clone()
+            } else {
+                panic!("Variable '{name}' is not defined")
             }
         } else if let Some(Group(expr)) = expr.downcast_ref::<Group>() {
             Box::new(Group(self.curry_expr(expr, symbols)))
