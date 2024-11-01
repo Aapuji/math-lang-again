@@ -271,15 +271,17 @@ impl Val for Tuple {
 pub struct Func {
     env: Rc<RefCell<Env>>, // uses vec instead of hashmap because # of args is likely small and order by insertion is needed
     arg_names: Vec<String>,
-    expr: Box<dyn Expr>
+    expr: Box<dyn Expr>,
+    codomain: Rc<CanonSet>
 }
 
 impl Func {
-    pub fn new(env: Rc<RefCell<Env>>, arg_names: &[String], expr: Box<dyn Expr>) -> Self {
+    pub fn new(env: Rc<RefCell<Env>>, arg_names: &[String], expr: Box<dyn Expr>, interned_set: &Rc<CanonSet>) -> Self {
         Self {
             env,
             arg_names: arg_names.to_owned(),
-            expr
+            expr,
+            codomain: Rc::clone(interned_set)
         }
     }
 
@@ -295,7 +297,8 @@ impl Func {
         Self {
             env: Rc::new(RefCell::new(env)),
             arg_names,
-            expr: value.1.to_owned()
+            expr: value.1.to_owned(),
+            codomain: parent.borrow().get_set("Univ").unwrap()
         }
     }
 
@@ -338,7 +341,8 @@ impl Func {
                 Self {
                     env: Rc::clone(&self.env),
                     expr: interpreter.curry_expr(&self.expr, &curried_args.iter().map(|s| s.as_str()).collect::<Vec<_>>()),
-                    arg_names: curried_args
+                    arg_names: curried_args,
+                    codomain: Rc::clone(&self.codomain)
                 }
             )
         }
@@ -368,6 +372,10 @@ impl Func {
 
     pub fn expr(&self) -> &Box<dyn Expr> {
         &self.expr
+    }
+
+    pub fn codomain(&self) -> &Rc<CanonSet> {
+        &self.codomain
     }
 }
 
@@ -421,10 +429,4 @@ impl Val for Func {
     fn as_boxed_any(&self) -> Box<dyn Any> {
         Box::new(self.to_owned())
     }
-}
-
-#[derive(Debug, Clone)]
-pub enum Arg {
-    Type(Rc<CanonSet>),
-    Value(Box<dyn Val>)
 }

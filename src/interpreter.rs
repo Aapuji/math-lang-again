@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::ops::Neg;
@@ -10,7 +11,8 @@ use crate::ast::{expr, expr::*, stmt::*};
 use crate::environment::{Env, SymStore};
 use crate::set::{self, canon, CanonSet, FiniteSet, InfiniteSet, Set, SetPool};
 use crate::token::{Token, TokenKind};
-use crate::value::{Func, Arg, Tuple, Val};
+use crate::types;
+use crate::value::{Func, Tuple, Val};
 
 #[derive(Debug)]
 pub struct Interpreter {
@@ -98,7 +100,7 @@ impl Interpreter {
             // type expr : typecast or typedef
             } else if let Some(TypeExpr(value, typeset)) = expr.downcast_ref() {
                 if let Some(Symbol(name)) = value.downcast_ref() {
-                    if !self.env.borrow().is_sym_assigned(name) {
+                    if !RefCell::borrow(&self.env).is_sym_assigned(name) {
                         let typeset = self.execute_expr(typeset);
 
                         // type def
@@ -114,21 +116,48 @@ impl Interpreter {
                 // type cast
                 println!("{}", todo!());
             
-            // } else if let Some(FuncTypeExpr(value, domain_arg_t, codomain)) = expr.downcast_ref() {
-            //     if let Some(Symbol(name)) = value.downcast_ref() {
-            //         if !self.is_sym_assigned(name) {
-            //             let domain = self.execute_expr(&domain_arg_t[0]);
-            //             let codomain = self.execute_expr(codomain);
+            } else if let Some(FuncTypeExpr(func, arg_types, codom)) = expr.downcast_ref() {
+                if let Some(Symbol(name)) = func.downcast_ref() {
+                    /* perhaps there will have to be a check for only defined in the current env
+                    because the following could happen:
 
-            //             if let Some(domset) = domain.downcast_ref::<Rc<CanonSet>>() {
-            //                 self.insert_sym_type(name, set);
-            //             }
-            //         }
-            //     }
+                    f : Real -> Real
+                    f(x) = x + 1
 
-            //     // function type cast (perhaps for classes?)
-            //     // eg maybe this?: f : impl [+ : A, A -> A], A -> A; f(a1, a2) = a1+a2; g : Int -> Int; g(x) = f : Int -> Int;
-            //     println!("{}", todo!())
+                    do 
+                        f : Real, Real -> Real
+                        f(x, y) = x + y
+                    end f(0, 1)
+
+                    Or do we not allow that either??
+                    */
+
+                    if !RefCell::borrow(&self.env).is_sym_assigned(name) {
+                        let mut dom_arr = Vec::with_capacity(arg_types.len());
+
+                        for typeset in arg_types {
+                            let typeset = self.execute_expr(typeset);
+
+                            if let Some(set) = typeset.downcast_ref::<Rc<CanonSet>>() {
+                                dom_arr.push(set.to_owned());
+                            } else {
+                                panic!("'{typeset}' is not a set")
+                            }
+                        }
+
+                        let codom = self.execute_expr(codom);
+                        if let Some(set) = codom.downcast_ref::<Rc<CanonSet>>() {
+                            self.env.borrow_mut().insert_sym_func_type(name.to_owned(), dom_arr, Rc::clone(set));
+                            return;
+                        } else {
+                            panic!("'{codom}' is not a set")
+                        }
+                    }
+                }
+
+                // function type cast???
+                println!("{}", todo!());
+
             } else {
                 println!("{}", self.execute_expr(expr));
             }
@@ -141,7 +170,7 @@ impl Interpreter {
         if let Some(Literal(lit)) = expr.downcast_ref() {
             Self::execute_literal(lit)
         } else if let Some(Symbol(name)) = expr.downcast_ref() {
-            if let Some(SymStore::Value(value)) = self.env.borrow().get(name) {
+            if let Some(SymStore::Value(value)) = RefCell::borrow(&self.env).get(name) {
                 value.clone()
             } else {
                 panic!("Variable '{name}' is not defined");
@@ -155,7 +184,8 @@ impl Interpreter {
                 return Box::new(Func::new(
                     Rc::clone(func.env()), 
                     func.args(), 
-                    Box::new(Unary(op.clone(), Box::new(Group(func.expr().to_owned()))))
+                    Box::new(Unary(op.clone(), Box::new(Group(func.expr().to_owned())))),
+                    func.codomain()
                 ));
             }
 
@@ -185,7 +215,8 @@ impl Interpreter {
                                 Box::new(Group(l_func.expr().to_owned())),
                                 op.to_owned(),
                                 Box::new(Group(new_expr))
-                            ))
+                            )),
+                            &RefCell::borrow(&self.env).get_set("Univ").unwrap() // later do some math stuff here i guess
                         ))
                     } else {
                         panic!("Function shorthand can only be used with functions with the same arity.")
@@ -200,7 +231,8 @@ impl Interpreter {
                         Box::new(Group(l_func.expr().to_owned())),
                         op.to_owned(),
                         Box::new(Literal(right))
-                    ))
+                    )),
+                    &RefCell::borrow(&self.env).get_set("Univ").unwrap() // later do some math stuff here i guess
                 ))
             } else if let Some(r_func) = right.downcast_ref::<Func>() {
                 // left is not a function
@@ -211,8 +243,8 @@ impl Interpreter {
                         Box::new(Literal(left)),
                         op.to_owned(),
                         Box::new(Group(r_func.expr().to_owned()))
-
-                    ))
+                    )),
+                    &RefCell::borrow(&self.env).get_set("Univ").unwrap() // later do some math stuff here i guess
                 ))
             }
 
@@ -260,13 +292,13 @@ impl Interpreter {
         if let Some(Literal(lit)) = expr.downcast_ref() {
             expr.to_owned()
         } else if let Some(Symbol(name)) = expr.downcast_ref() {
-            if let Some(SymStore::Value(value)) = self.env.borrow().get(name) {
+            if let Some(SymStore::Value(value)) = RefCell::borrow(&self.env).get(name) {
                 if !symbols.contains(&name.as_str()) {
                     Box::new(Literal(value.clone()))
                 } else {
                     expr.clone()
                 }
-            } else if let Some(SymStore::Type(_)) = self.env.borrow().get(name) {
+            } else if let Some(SymStore::Type(_)) = RefCell::borrow(&self.env).get(name) {
                 expr.clone()
             } else {
                 panic!("Variable '{name}' is not defined")
@@ -827,14 +859,31 @@ impl Interpreter {
     }
 
     fn execute_assign(&mut self, name: &str, right: &Box<dyn Expr>) -> Box<dyn Val> {
-        if self.env.borrow().is_sym_assigned(name) {
+        if RefCell::borrow(&self.env).is_sym_assigned(name) {
             panic!("Variable {name} cannot be reassigned")
         }
 
         let right = self.execute_expr(right);
 
-        if let Some(_) = right.downcast_ref::<Func>() {
-            // panic!("IN ASS: N {name} R {right}");
+        if let Ok(mut func) = right.downcast::<Func>() {
+            // function name already has a map type
+            if let Some(SymStore::FuncType(arg_types, codomain)) = self.env.borrow_mut().get(name) {
+                if func.arity() != arg_types.len() {
+                    panic!("Function '{name}' was previously denoted to have {} arguments, but is declared to have {} instead.", arg_types.len(), func.arity())
+                }
+
+                for (i, typeset) in arg_types.iter().enumerate() {
+                    let arg_name = &func.args()[i];
+
+                    // TODO!!!
+
+                    this is an error
+                }
+
+                
+            }
+
+            // it doesn't
             self.env.borrow_mut().insert_sym(
                 name.to_owned(),
                 right.clone(),
@@ -844,7 +893,7 @@ impl Interpreter {
             return right;
         }
         
-        if let Some(SymStore::Type(typeset)) = self.env.borrow().get(name) {
+        if let Some(SymStore::Type(typeset)) = RefCell::borrow(&self.env).get(name) {
             if !typeset.contains(&right) {
                 panic!("'{name}' is in '{typeset}' which does not contain '{right}'")
             }
@@ -860,7 +909,7 @@ impl Interpreter {
     }
 
     fn execute_typed_assign(&mut self, name: &str, typeset: &Box<dyn Expr>, right: &Box<dyn Expr>) {
-        if self.env.borrow().is_sym_assigned(name) {
+        if RefCell::borrow(&self.env).is_sym_assigned(name) {
             panic!("Variable '{name}' cannot be reassigned")
         }
 

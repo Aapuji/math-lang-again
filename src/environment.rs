@@ -6,7 +6,7 @@ use std::ops::BitOr;
 use std::rc::Rc;
 
 use crate::set::{canon, CanonSet, Set, SetPool};
-use crate::value::{Arg, Val};
+use crate::value::Val;
 
 /// What the symbol map stores.
 /// 
@@ -15,7 +15,7 @@ use crate::value::{Arg, Val};
 pub enum SymStore {
     Value(Box<dyn Val>),
     Type(Rc<CanonSet>),
-    FuncType(Vec<Arg>, Rc<CanonSet>)
+    FuncType(Vec<Rc<CanonSet>>, Rc<CanonSet>)
 }
 
 impl SymStore {
@@ -98,7 +98,7 @@ impl Env {
         );
     }
 
-    pub fn insert_sym_func_type(&mut self, name: String, args: Vec<Arg>, codomain: Rc<CanonSet>) {
+    pub fn insert_sym_func_type(&mut self, name: String, args: Vec<Rc<CanonSet>>, codomain: Rc<CanonSet>) {
         self.symbols.insert(
             name,
             SymStore::FuncType(args, codomain)
