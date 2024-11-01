@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Debug, Display};
 use std::hash::{Hash, Hasher};
@@ -8,7 +9,7 @@ use num::{BigInt, BigRational, Complex};
 use crate::ast::expr::{self, Expr, Symbol};
 use crate::environment::Env;
 use crate::interpreter::Interpreter;
-use crate::set::{CanonSet, Set, SetPool};
+use crate::set::{self, CanonSet, Set, SetPool};
 
 pub trait Val: Any + Debug + Display + CloneBox {
     fn compare(&self, other: &dyn Val) -> bool;
@@ -267,55 +268,36 @@ impl Val for Tuple {
 }
 
 #[derive(Debug, Clone)]
-pub struct Func<'t> {
-    env: Env<'t>, // uses vec instead of hashmap because # of args is likely small and order by insertion is needed
+pub struct Func {
+    env: Rc<RefCell<Env>>, // uses vec instead of hashmap because # of args is likely small and order by insertion is needed
     arg_names: Vec<String>,
     expr: Box<dyn Expr>
 }
 
-impl<'t> Func<'t> {
-    pub fn call(&mut self, args: &[Option<Box<dyn Val>>]) -> Box<dyn Val> {
+impl Func {
+    pub fn call(&self, args: &[Option<Box<dyn Val>>], set_pool: &mut SetPool) -> Box<dyn Val> {
         if args.len() > self.arity() {
             panic!("Too many arguments")
         }
 
-        for arg in args {
+        for (i, arg) in args.iter().enumerate() {
             if let Some(val) = arg {
-
+                self.env.borrow_mut().insert_sym(self.arg_names[i].clone(), val.to_owned(), set_pool);
+            } else {
+                todo!()
             }
         }
 
-
-        // for (i, arg) in args.iter().enumerate() {
-        //     if let Some(val) = arg {
-        //         if let Arg::Type(set) = &self.env.1[i] {
-        //             if !set.contains(val) {
-        //                 panic!("Arg '{}' is in '{set}' which doesn't include '{val}'", self.env.0[i])
-        //             } else {
-        //                 self.env.1[i] = Arg::Value(val.to_owned());
-
-        //             }
-        //         } else {
-        //             unreachable!()
-        //         }
-        //     }
-        // }
-
-        todo!();
-
-        if args.len() < self.arity() {
-            todo!()
-        } else {
-            todo!()
-        }
+        let mut interpreter = Interpreter::with_env(&self.env);
+        interpreter.execute_expr(&self.expr)
     }
 
     pub fn is_defined(&self, name: &str) -> bool {
-        self.env.contains_key(name)
+        self.env.borrow().contains_key(name)
     }
 
     pub fn define(&mut self, name: &str, value: Box<dyn Val>, set_pool: &mut SetPool) {
-        self.env.insert_sym(name.to_owned(), value, set_pool);
+        self.env.borrow_mut().insert_sym(name.to_owned(), value, set_pool);
     }
 
     pub fn arity(&self) -> usize {
@@ -330,35 +312,24 @@ impl<'t> Func<'t> {
         &self.expr
     }
 
-    pub fn from_func_expr(value: &expr::Func, parent: &mut Env) -> Self {
-        // let mut arg_names = Vec::with_capacity(value.0.len());
-        // let mut env = Env::new(Some(&*parent));
+    pub fn from_func_expr(value: &expr::Func, parent: Rc<RefCell<Env>>, set_pool: &mut SetPool) -> Self {
+        let mut arg_names = Vec::with_capacity(value.0.len());
+        let mut env = Env::new(Some(Rc::clone(&parent)));
         
-        // for sym in &value.0 {
-        //     env.insert_sym(sym.to_owned(), 
-        //     arg_names.push(sym.0.to_owned());
-        // }
+        for sym in &value.0 {
+            env.insert_sym_type(sym.0.to_owned(), parent.borrow().get_set("Univ").unwrap(), set_pool);
+            arg_names.push(sym.0.to_owned());
+        }
 
-
-
-
-        // let mut env = (Vec::with_capacity(value.0.len()), Vec::with_capacity(value.0.len()));
-
-        // for arg in &value.0 {
-        //     env.0.push(arg.0.to_owned());
-        //     env.1.push(Arg::Type(env.get_set("Univ").unwrap()));
-        // }
-        
-        // Self {
-        //     env,
-        //     expr: value.1.clone()
-        // }
-
-        todo!()
+        Self {
+            env: Rc::new(RefCell::new(env)),
+            arg_names,
+            expr: value.1.to_owned()
+        }
     }
 }
 
-impl<'t> Display for Func<'t> {
+impl Display for Func {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.arity() == 1 {
             write!(f, "{} -> ", self.args()[0])
@@ -382,13 +353,13 @@ impl<'t> Display for Func<'t> {
     }
 }
 
-impl<'t> Hash for Func<'t> {
+impl Hash for Func {
     fn hash<H: Hasher>(&self, state: &mut H) {
         todo!()
     }
 }
 
-impl Val for Func<'static> {
+impl Val for Func {
     fn compare(&self, other: &dyn Val) -> bool {
         if let Some(func @ Func { .. }) = other.downcast_ref() {
             true // todo

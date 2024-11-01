@@ -101,7 +101,11 @@ pub mod expr {
                 write!(f, "{}(", caller)?;
 
                 for arg in args {
-                    write!(f, "{}", arg)?;
+                    if let Some(actual) = arg {
+                        write!(f, "{actual}")?
+                    } else {
+                        write!(f, "")?
+                    }
                 }
 
                 write!(f, ")")
@@ -191,7 +195,7 @@ pub mod expr {
             Group(Box<dyn Expr>),
             Unary(Token, Box<dyn Expr>),
             Binary(Box<dyn Expr>, Token, Box<dyn Expr>),
-            Call(Box<dyn Expr>, Vec<Box<dyn Expr>>),
+            Call(Box<dyn Expr>, Vec<Option<Box<dyn Expr>>>),
             Assign(Symbol, Box<dyn Expr>),
             TypedAssign(Symbol, Box<dyn Expr>, Box<dyn Expr>), // name, type, value (x : Int = 5; y : {1, 2, 3} = 0)
             Func(Vec<Symbol>, Box<dyn Expr>),

@@ -1,4 +1,7 @@
+use std::borrow::Borrow;
+use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
+use std::fmt;
 use std::rc::Rc;
 
 use crate::set::{canon, CanonSet, Set, SetPool};
@@ -26,22 +29,28 @@ impl SymStore {
 }
 
 /// An environment of symbols
-#[derive(Debug, Clone)]
-pub struct Env<'t> {
-    parent: Option<&'t Env<'t>>,
+#[derive(Clone)]
+pub struct Env {
+    parent: Option<Rc<RefCell<Env>>>,
     symbols: HashMap<String, SymStore>
 }
 
-impl<'t> Env<'t> {
-    pub fn new(parent: Option<&'t Self>) -> Self {
+impl Env {
+    pub fn new(parent: Option<Rc<RefCell<Self>>>) -> Self {
         Self {
             parent,
             symbols: HashMap::new()
         }
     }
 
-    pub fn get(&self, name: &str) -> Option<&SymStore> {
-        self.symbols.get(name)
+    pub fn get(&self, name: &str) -> Option<SymStore> {
+        if self.symbols.get(name).is_some() {
+            self.symbols.get(name).map(|name| name.to_owned())
+        } else if let Some(env) = &self.parent {
+            RefCell::borrow(env).get(name)
+        } else {
+            None
+        }
     }
 
     pub fn get_set(&self, set_name: &str) -> Option<Rc<CanonSet>> {
@@ -51,7 +60,11 @@ impl<'t> Env<'t> {
             }
         }
 
-        None
+        if let Some(env) = &self.parent {
+            RefCell::borrow(env).get_set(set_name)
+        } else {
+            None
+        }
     }
 
     /// Returns if the given key is in the [`Env`].
@@ -89,5 +102,18 @@ impl<'t> Env<'t> {
             name,
             SymStore::FuncType(args, codomain)
         );
+    }
+}
+
+impl fmt::Debug for Env {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Env")
+            .field("parent", if let None = self.parent {
+                &None::<()>
+            } else {
+                &Some("recursive [Env]")
+            })
+            .field("symbols", &self.symbols)
+            .finish()
     }
 }

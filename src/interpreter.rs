@@ -1,4 +1,5 @@
-use std::collections::{HashMap, HashSet};
+use std::cell::RefCell;
+use std::collections::HashSet;
 use std::ops::Neg;
 use std::rc::Rc;
 use num::bigint::Sign;
@@ -7,17 +8,17 @@ use num::pow::Pow;
 
 use crate::ast::{expr, expr::*, stmt::*};
 use crate::environment::{Env, SymStore};
-use crate::set::{canon, CanonSet, FiniteSet, InfiniteSet, Set, SetPool};
+use crate::set::{self, canon, CanonSet, FiniteSet, InfiniteSet, Set, SetPool};
 use crate::token::TokenKind;
 use crate::value::{Func, Arg, Tuple, Val};
 
 #[derive(Debug)]
-pub struct Interpreter<'t> {
-    global_env: Env<'t>,
+pub struct Interpreter {
+    env: Rc<RefCell<Env>>,
     set_pool: SetPool
 }
 
-impl<'t> Interpreter<'t> {
+impl Interpreter {
     pub fn new() -> Self {
         let mut set_pool = SetPool::new();
         let mut env = Env::new(None);
@@ -64,8 +65,15 @@ impl<'t> Interpreter<'t> {
         );
 
         Self {
-            global_env: env,
+            env: Rc::new(RefCell::new(env)),
             set_pool
+        }
+    }
+
+    pub fn with_env(env: &Rc<RefCell<Env>>) -> Self {
+        Self {
+            env: Rc::clone(env),
+            set_pool: SetPool::new()
         }
     }
 
@@ -86,12 +94,12 @@ impl<'t> Interpreter<'t> {
             // type expr : typecast or typedef
             } else if let Some(TypeExpr(value, typeset)) = expr.downcast_ref() {
                 if let Some(Symbol(name)) = value.downcast_ref() {
-                    if !self.global_env.is_sym_assigned(name) {
+                    if !self.env.borrow().is_sym_assigned(name) {
                         let typeset = self.execute_expr(typeset);
 
                         // type def
                         if let Some(set) = typeset.downcast_ref::<Rc<CanonSet>>() {
-                            self.global_env.insert_sym_type(name.to_owned(), Rc::clone(set), &mut self.set_pool);
+                            self.env.borrow_mut().insert_sym_type(name.to_owned(), Rc::clone(set), &mut self.set_pool);
                             return;
                         } else {
                             panic!("'{typeset}' is not a set")
@@ -129,7 +137,7 @@ impl<'t> Interpreter<'t> {
         if let Some(Literal(lit)) = expr.downcast_ref() {
             Self::execute_literal(lit)
         } else if let Some(Symbol(name)) = expr.downcast_ref() {
-            if let Some(SymStore::Value(value)) = self.global_env.get(name) {
+            if let Some(SymStore::Value(value)) = self.env.borrow().get(name) {
                 value.clone()
             } else {
                 panic!("Variable '{name}' is not defined");
@@ -162,8 +170,25 @@ impl<'t> Interpreter<'t> {
                 .collect::<Vec<Box<dyn Val>>>()))
         } else if let Some(expr::Set(values)) = expr.downcast_ref() {
             self.execute_set(values)
-        } else if let Some(func @ expr::Func(_, _)) = expr.downcast_ref() {
-            Box::new(Func::from_func_expr(func, &mut self.global_env))
+        } else if let Some(func) = expr.downcast_ref::<expr::Func>() {
+            Box::new(Func::from_func_expr(func, Rc::clone(&self.env), &mut self.set_pool))
+        } else if let Some(Call(func_expr, arg_exprs)) = expr.downcast_ref() {
+            let func_value = self.execute_expr(func_expr);
+
+            if let Some(func) = func_value.downcast_ref::<Func>() {
+                let args = arg_exprs
+                    .iter()
+                    .map(|arg| if let Some(actual) = arg {
+                        Some(self.execute_expr(actual))
+                    } else {
+                        None
+                    })
+                    .collect::<Vec<_>>();
+
+                func.call(&args, &mut self.set_pool)
+            } else {
+                panic!("'{func_value}' is not callable")
+            }
         } else {
             todo!()
         }
@@ -634,14 +659,15 @@ impl<'t> Interpreter<'t> {
     }
 
     fn execute_assign(&mut self, name: &str, right: &Box<dyn Expr>) {
-        if self.global_env.is_sym_assigned(name) {
+        if self.env.borrow().is_sym_assigned(name) {
             panic!("Variable {name} cannot be reassigned")
         }
 
         let right = self.execute_expr(right);
 
         if let Some(_) = right.downcast_ref::<Func>() {
-            self.global_env.insert_sym(
+            // panic!("IN ASS: N {name} R {right}");
+            self.env.borrow_mut().insert_sym(
                 name.to_owned(),
                 right,
                 &mut self.set_pool
@@ -650,13 +676,13 @@ impl<'t> Interpreter<'t> {
             return;
         }
         
-        if let Some(SymStore::Type(typeset)) = self.global_env.get(name) {
+        if let Some(SymStore::Type(typeset)) = self.env.borrow().get(name) {
             if !typeset.contains(&right) {
                 panic!("'{name}' is in '{typeset}' which does not contain '{right}'")
             }
         }
 
-        self.global_env.insert_sym(
+        self.env.borrow_mut().insert_sym(
             name.to_owned(),
             right,
             &mut self.set_pool
@@ -664,7 +690,7 @@ impl<'t> Interpreter<'t> {
     }
 
     fn execute_typed_assign(&mut self, name: &str, typeset: &Box<dyn Expr>, right: &Box<dyn Expr>) {
-        if self.global_env.is_sym_assigned(name) {
+        if self.env.borrow().is_sym_assigned(name) {
             panic!("Variable '{name}' cannot be reassigned")
         }
 
@@ -674,7 +700,7 @@ impl<'t> Interpreter<'t> {
             let value = self.execute_expr(right);
 
             if set.contains(&value) {
-                self.global_env.insert_sym(name.to_owned(), value, &mut self.set_pool);
+                self.env.borrow_mut().insert_sym(name.to_owned(), value, &mut self.set_pool);
             } else {
                 panic!("Incompatible types: '{value}' cannot be cast into '{typeset}'");
             }

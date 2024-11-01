@@ -102,7 +102,14 @@ impl<'t> Parser<'t> {
                     panic!("Invalid left-hand for function definition: f name");
                 }
                 
-                let args = self.validate_args(args);
+                if args.iter().any(Option::is_none) {
+                    panic!("Function notation requires every argument be defined")
+                }
+
+                let args = self.validate_args(&args
+                    .iter()
+                    .map(|a| a.to_owned().unwrap())
+                    .collect::<Vec<_>>());
                 
                 return Box::new(Assign(Symbol(name.unwrap().clone()), Box::new(Func(args, right))))
             // Parse var: x = expr
@@ -310,10 +317,12 @@ impl<'t> Parser<'t> {
 
                 self.next();
 
-                args.push(self.parse_expr());
+                args.push(Some(self.parse_expr()));
 
                 self.match_next(&[&TokenKind::Comma])
             } else {
+                args.push(None);
+                
                 true
             }
         } {}
