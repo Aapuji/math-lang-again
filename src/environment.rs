@@ -44,6 +44,10 @@ impl Env {
         }
     }
 
+    pub fn from_env(env: &Rc<RefCell<Self>>) -> Self {
+        RefCell::borrow(env).clone()
+    }
+
     pub fn get(&self, name: &str) -> Option<SymStore> {
         if self.symbols.get(name).is_some() {
             self.symbols.get(name).map(|name| name.to_owned())
@@ -81,9 +85,10 @@ impl Env {
         }
     }
 
-    pub fn insert_sym(&mut self, name: String, value: Box<dyn Val>, set_pool: &mut SetPool) {
+    /// `set` must already be interned.
+    pub fn insert_sym(&mut self, name: String, value: Box<dyn Val>) {
         let value = if let Some(set) = value.downcast_ref::<Rc<CanonSet>>() {
-            Box::new(set_pool.intern(canon(Rc::clone(set))))
+            Box::new(Rc::clone(set))
         } else {
             value
         };
@@ -91,10 +96,11 @@ impl Env {
         self.symbols.insert(name, SymStore::Value(value));
     }
 
-    pub fn insert_sym_type(&mut self, name: String, set: Rc<CanonSet>, set_pool: &mut SetPool) {
+    /// `set` must already be interned.
+    pub fn insert_sym_type(&mut self, name: String, set: Rc<CanonSet>) {
         self.symbols.insert(
             name, 
-            SymStore::Type(set_pool.intern(set))
+            SymStore::Type(set)
         );
     }
 

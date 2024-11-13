@@ -20,51 +20,37 @@ pub struct Interpreter {
     set_pool: SetPool
 }
 
+macro_rules! insert_set {
+    (
+        $env:ident ;
+        $name:ident :
+        $set:expr ;
+        $set_pool:ident
+    ) => {
+        $env.insert_sym(
+            String::from(stringify!($name)),
+            Box::new($set_pool.intern(&Rc::new($set)))
+        )
+    };
+}
+
 impl Interpreter {
     pub fn new() -> Self {
         let mut set_pool = SetPool::new();
         let mut env = Env::new(None);
 
         // All-encompassing Types
-        env.insert_sym(
-            String::from("Univ"), 
-            Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Univ))),
-            &mut set_pool
-        );
-        env.insert_sym(
-            String::from("Empty"), 
-            Box::new(Rc::new(CanonSet::Finite(FiniteSet::new(HashSet::new())))),
-            &mut set_pool
-        );
+        insert_set!(env; Univ: CanonSet::Infinite(InfiniteSet::Univ); set_pool);
+        insert_set!(env; Empty: CanonSet::Finite(FiniteSet::new(HashSet::new())); set_pool);
 
         // Numeric Types (implementing class Num?)
-        env.insert_sym(
-            String::from("Nat"), 
-            Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Nat))),
-            &mut set_pool
-        );
-        env.insert_sym(
-            String::from("Int"), 
-            Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Int))),
-            &mut set_pool
-        );
-        env.insert_sym(
-            String::from("Real"), 
-            Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Real))),
-            &mut set_pool
-        );
-        env.insert_sym(
-            String::from("Complex"), 
-            Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Complex))),
-            &mut set_pool
-        );
+        insert_set!(env; Nat: CanonSet::Infinite(InfiniteSet::Nat); set_pool);
+        insert_set!(env; Int: CanonSet::Infinite(InfiniteSet::Int); set_pool);
+        insert_set!(env; Real: CanonSet::Infinite(InfiniteSet::Real); set_pool);
+        insert_set!(env; Complex: CanonSet::Infinite(InfiniteSet::Complex); set_pool);
 
         // Text Types (implementing class Text?)
-        env.insert_sym(
-            String::from("Str"), 
-            Box::new(Rc::new(CanonSet::Infinite(InfiniteSet::Str))),
-            &mut set_pool
-        );
+        insert_set!(env; Str: CanonSet::Infinite(InfiniteSet::Str); set_pool);
 
         Self {
             env: Rc::new(RefCell::new(env)),
@@ -105,7 +91,7 @@ impl Interpreter {
 
                         // type def
                         if let Some(set) = typeset.downcast_ref::<Rc<CanonSet>>() {
-                            self.env.borrow_mut().insert_sym_type(name.to_owned(), Rc::clone(set), &mut self.set_pool);
+                            self.env.borrow_mut().insert_sym_type(name.to_owned(), Rc::clone(&self.set_pool.intern(set)));
                             return;
                         } else {
                             panic!("'{typeset}' is not a set")
@@ -264,7 +250,7 @@ impl Interpreter {
         } else if let Some(expr::Set(values)) = expr.downcast_ref() {
             self.execute_set(values)
         } else if let Some(func) = expr.downcast_ref::<expr::Func>() {
-            Box::new(Func::from_func_expr(func, Rc::clone(&self.env), &mut self.set_pool))
+            Box::new(Func::from_func_expr(func, Rc::clone(&self.env)))
         } else if let Some(Call(func_expr, arg_exprs)) = expr.downcast_ref() {
             let func_value = self.execute_expr(func_expr);
 
@@ -278,7 +264,7 @@ impl Interpreter {
                     })
                     .collect::<Vec<_>>();
 
-                func.call(&args, &mut self.set_pool)
+                func.call(&args)
             } else {
                 panic!("'{func_value}' is not callable")
             }
@@ -863,46 +849,37 @@ impl Interpreter {
             panic!("Variable {name} cannot be reassigned")
         }
 
-        let right = self.execute_expr(right);
+        let mut right = self.execute_expr(right);
 
-        if let Ok(mut func) = right.downcast::<Func>() {
+        if let Ok(func) = right.downcast::<Func>() {
             // function name already has a map type
             if let Some(SymStore::FuncType(arg_types, codomain)) = self.env.borrow_mut().get(name) {
                 if func.arity() != arg_types.len() {
                     panic!("Function '{name}' was previously denoted to have {} arguments, but is declared to have {} instead.", arg_types.len(), func.arity())
                 }
 
+                let mut new_env = Env::from_env(func.env());
+
                 for (i, typeset) in arg_types.iter().enumerate() {
                     let arg_name = &func.args()[i];
-
-                    // TODO!!!
-
-                    this is an error
+                    
+                    new_env.insert_sym_type(arg_name.to_owned(), self.set_pool.intern(typeset));
                 }
 
-                
+                right = Box::new(func.clone_with_env(Rc::new(RefCell::new(new_env))));
             }
-
-            // it doesn't
-            self.env.borrow_mut().insert_sym(
-                name.to_owned(),
-                right.clone(),
-                &mut self.set_pool
-            );
-
-            return right;
-        }
-        
-        if let Some(SymStore::Type(typeset)) = RefCell::borrow(&self.env).get(name) {
-            if !typeset.contains(&right) {
-                panic!("'{name}' is in '{typeset}' which does not contain '{right}'")
+        } else {
+            
+            if let Some(SymStore::Type(typeset)) = RefCell::borrow(&self.env).get(name) {
+                if !typeset.contains(&right) {
+                    panic!("'{name}' is in '{typeset}' which does not contain '{right}'")
+                }
             }
         }
 
         self.env.borrow_mut().insert_sym(
             name.to_owned(),
-            right.clone(),
-            &mut self.set_pool
+            right.clone()
         );
 
         right
@@ -919,7 +896,7 @@ impl Interpreter {
             let value = self.execute_expr(right);
 
             if set.contains(&value) {
-                self.env.borrow_mut().insert_sym(name.to_owned(), value, &mut self.set_pool);
+                self.env.borrow_mut().insert_sym(name.to_owned(), value);
             } else {
                 panic!("Incompatible types: '{value}' cannot be cast into '{typeset}'");
             }

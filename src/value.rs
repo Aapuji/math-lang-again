@@ -285,12 +285,12 @@ impl Func {
         }
     }
 
-    pub fn from_func_expr(value: &expr::Func, parent: Rc<RefCell<Env>>, set_pool: &mut SetPool) -> Self {
+    pub fn from_func_expr(value: &expr::Func, parent: Rc<RefCell<Env>>) -> Self {
         let mut arg_names = Vec::with_capacity(value.0.len());
         let mut env = Env::new(Some(Rc::clone(&parent)));
         
         for sym in &value.0 {
-            env.insert_sym_type(sym.0.to_owned(), parent.borrow().get_set("Univ").unwrap(), set_pool);
+            env.insert_sym_type(sym.0.to_owned(), parent.borrow().get_set("Univ").unwrap());
             arg_names.push(sym.0.to_owned());
         }
 
@@ -302,27 +302,37 @@ impl Func {
         }
     }
 
-    pub fn merge_into(&self, other: &Self) {
-        assert!(self.arity() == other.arity());
-
-        // TODO: check if the types of the args match. (perhaps find the intersection of the corresp two?)
-
-        let mut expr = self.expr.clone();
-
-        
-
+    pub fn clone_with_env(&self, new_env: Rc<RefCell<Env>>, ) -> Self {
+        Self {
+            env: new_env,
+            arg_names: self.arg_names.clone(),
+            expr: self.expr.clone(),
+            codomain: self.codomain.clone()
+        }
     }
 
-    pub fn call(&self, args: &[Option<Box<dyn Val>>], set_pool: &mut SetPool) -> Box<dyn Val> {
+    pub fn call(&self, args: &[Option<Box<dyn Val>>]) -> Box<dyn Val> {
         if args.len() > self.arity() {
             panic!("Too many arguments")
         }
+
+        let mut call_env = self.env.borrow().clone();
 
         let mut curried_args = vec![];
 
         for (i, arg) in args.iter().enumerate() {
             if let Some(val) = arg {
-                self.env.borrow_mut().insert_sym(self.arg_names[i].clone(), val.to_owned(), set_pool);
+                let arg_name = &self.arg_names[i];
+                
+                if let Some(SymStore::Type(typeset)) = self.env.borrow().get(arg_name) {
+                    if !typeset.contains(val) {
+                        panic!("Parameter '{arg_name}' belongs to '{typeset}' which doesn't contain '{val}'");
+                    }
+                } else {
+                    unreachable!()
+                }
+
+                call_env.insert_sym(arg_name.clone(), val.to_owned());
             } else {
                 curried_args.push(self.arg_names[i].clone());
             }
@@ -334,12 +344,14 @@ impl Func {
             }
         }
 
-        let mut interpreter = Interpreter::with_env(&self.env);
+        let call_env = Rc::new(RefCell::new(call_env));
+
+        let mut interpreter = Interpreter::with_env(&call_env);
 
         if curried_args.len() > 0 {
             return Box::new(
                 Self {
-                    env: Rc::clone(&self.env),
+                    env: Rc::clone(&call_env),
                     expr: interpreter.curry_expr(&self.expr, &curried_args.iter().map(|s| s.as_str()).collect::<Vec<_>>()),
                     arg_names: curried_args,
                     codomain: Rc::clone(&self.codomain)
@@ -354,8 +366,8 @@ impl Func {
         self.env.borrow().contains_key(name)
     }
 
-    pub fn define(&mut self, name: &str, value: Box<dyn Val>, set_pool: &mut SetPool) {
-        self.env.borrow_mut().insert_sym(name.to_owned(), value, set_pool);
+    pub fn define(&mut self, name: &str, value: Box<dyn Val>) {
+        self.env.borrow_mut().insert_sym(name.to_owned(), value);
     }
 
     pub fn arity(&self) -> usize {

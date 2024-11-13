@@ -349,12 +349,12 @@ impl SetPool {
     }
 
     /// Interns the given [`Rc<Set>`] and returns it back out. If it is new, it will intern it to the [`SetPool`], otherwise it will just return it
-    pub fn intern(&mut self, set: Rc<CanonSet>) -> Rc<CanonSet> {
-        if !self.pool.contains(&set) {
-            self.pool.insert(Rc::clone(&set));
+    pub fn intern(&mut self, set: &Rc<CanonSet>) -> Rc<CanonSet> {
+        if !self.pool.contains(set) {
+            self.pool.insert(Rc::clone(set));
         }
 
-        set
+        Rc::clone(set)
     }
 }
 
