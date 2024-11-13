@@ -1,15 +1,14 @@
 use std::any::Any;
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Debug, Display};
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use num::{BigInt, BigRational, Complex};
 
-use crate::ast::expr::{self, Binary, Call, Expr, Group, Literal, Matrix, Symbol, Unary};
+use crate::ast::expr::{self, Expr};
 use crate::environment::{Env, SymStore};
 use crate::interpreter::Interpreter;
-use crate::set::{self, CanonSet, Set, SetPool};
+use crate::set::{CanonSet, Set};
 
 pub trait Val: Any + Debug + Display + CloneBox {
     fn compare(&self, other: &dyn Val) -> bool;

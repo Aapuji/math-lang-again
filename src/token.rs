@@ -33,6 +33,7 @@ impl Token {
             TokenKind::Comma => ",",
             TokenKind::DblAmp => "&&",
             TokenKind::DblBar => "||",
+            TokenKind::DblDot => "..",
             TokenKind::DblEq => "==",
             TokenKind::Dot => ".",
             TokenKind::Eq => "=",
@@ -41,12 +42,10 @@ impl Token {
             TokenKind::Greater => ">",
             TokenKind::GreaterColon => ">:",
             TokenKind::GreaterEq => ">=",
-            TokenKind::GreaterEqColon => ">=:",
             TokenKind::Hash => "#",
             TokenKind::Less => "<",
             TokenKind::LessColon => "<:",
             TokenKind::LessEq => "<=",
-            TokenKind::LessEqColon => "<=:",
             TokenKind::Minus => "-",
             TokenKind::OpenBrace => "{",
             TokenKind::OpenBracket => "[",
@@ -101,10 +100,7 @@ pub enum TokenKind {
     DblAmp, DblBar,
     EqColon, LessColon, GreaterColon, 
     SmallArrow, FatArrow,
-
-    
-    // Triple-Character Tokens
-    LessEqColon, GreaterEqColon,
+    DblDot,
 
     // Value Tokens
     Ident(String), String(String), Char(String),

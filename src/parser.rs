@@ -230,7 +230,6 @@ impl<'t> Parser<'t> {
         while self.match_next(&[
             &TokenKind::EqColon,
             &TokenKind::LessColon, &TokenKind::GreaterColon,
-            &TokenKind::LessEqColon, &TokenKind::GreaterEqColon
         ]) {
             let op = self.current().clone();
 
