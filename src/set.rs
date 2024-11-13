@@ -1,47 +1,127 @@
 use std::any::Any;
 use std::collections::HashSet;
-use std::fmt;
+use std::fmt::{self, Debug};
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::rc::Rc;
 
-use num::{BigInt, BigRational, Complex};
+use num::bigint::{self, Sign};
+use num::{BigInt, BigRational, Complex, Zero};
 
+use crate::iter::ValIterator;
 use crate::value::Val;
 
-pub trait Set: Val + CloneSet {
+pub trait Set {
     fn is_finite(&self) -> bool;
     fn is_countable(&self) -> bool;
 
     /// Enumerates the set into values. If it cannot be enumerated, it returns [`None`].
-    fn enumerate(&self) -> Option<Box<dyn Iterator<Item = &Box<dyn Val>> + '_>>;
+    fn enumerate<I: ValIterator>(&self) -> Option<I>;
     fn contains(&self, other: &Box<dyn Val>) -> bool;
 
     /// Checks if `self` is a subset of `other` or they're equal.
-    fn is_subset(&self, other: &Box<dyn Set>) -> bool;
+    fn is_subset(&self, other: &Rc<CanonSet>) -> bool;
 }
 
-pub trait CloneSet {
-    fn clone_set(&self) -> Box<dyn Set>;
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub enum CanonSet {
+    Finite(FiniteSet),
+    Infinite(InfiniteSet),
+    Union(Rc<Self>, Rc<Self>),
+    Intersect(Rc<Self>, Rc<Self>),
+    SymDiff(Rc<Self>, Rc<Self>),
+    Exclusion(Rc<Self>, Rc<Self>),
+    Complement(Rc<Self>)
 }
 
-impl<T> CloneSet for T
-where 
-    T: 'static + Set + Clone
-{
-    fn clone_set(&self) -> Box<dyn Set> {
-        Box::new(self.clone())
+impl fmt::Display for CanonSet {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Finite(set) => write!(f, "{}", set),
+            Self::Infinite(set) => write!(f, "{}", set),
+            Self::Union(a, b) => write!(f, "{} | {}", a, b),
+            Self::Intersect(a, b) => write!(f, "{} & {}", a, b),
+            Self::SymDiff(a, b) => write!(f, "{} ~ {}", a, b),
+            Self::Exclusion(a, b) => write!(f, "{} \\ {}", a, b),
+            Self::Complement(set) => write!(f, "~{}", set)
+        }
     }
 }
 
-impl Clone for Box<dyn Set> {
-    fn clone(&self) -> Self {
-        self.clone_set()
+/// Logic to canonicalize the set expression tree
+pub fn canon(set: Rc<CanonSet>) -> Rc<CanonSet> {
+    // placeholder for now
+    set
+}
+
+impl Val for Rc<CanonSet> {
+    fn compare(&self, other: &dyn Val) -> bool {
+        if let Some(other_set) = other.downcast_ref::<Rc<CanonSet>>() {
+            self == other_set
+        } else {
+            false
+        }
+    }
+
+    fn hash_val(&self, mut state: &mut dyn Hasher) {
+        self.hash(&mut state);
+    }
+
+    fn is_set(&self) -> bool {
+        true
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_boxed_any(&self) -> Box<dyn Any> {
+        Box::new(self.to_owned())
+    }
+}
+
+impl Set for CanonSet {
+    fn is_finite(&self) -> bool {
+        match self {
+            Self::Finite(set) => set.is_finite(), 
+            Self::Infinite(set) => set.is_finite(),
+
+            _ => todo!()
+        }
+    }
+
+    fn is_countable(&self) -> bool {
+        match self {
+            Self::Finite(set) => set.is_countable(),
+            Self::Infinite(set) => set.is_countable(),
+
+            _ => todo!()
+        }
+    }
+
+    fn enumerate<I: ValIterator>(&self) -> Option<I> {
+        todo!()
+    }
+
+    fn contains(&self, other: &Box<dyn Val>) -> bool {
+        match self {
+            Self::Finite(set) => set.contains(other),
+            Self::Infinite(set) => set.contains(other),
+
+            _ => todo!()
+        }
+    }
+
+    fn is_subset(&self, other: &Rc<Self>) -> bool {
+        match self {
+            _ => todo!()
+        }
     }
 }
 
 /// A finite set that holds all of its elements
 /// 
 /// It saves its hash on creation, as all values are immutable so it will never change. That way it doesn't have to rehash every time it needs a hash.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FiniteSet {
     elements: HashSet<Box<dyn Val>>,
     hash: u64
@@ -59,12 +139,6 @@ impl FiniteSet {
         base.hash = state.finish();
 
         base
-    }
-}
-
-impl PartialEq for FiniteSet {
-    fn eq(&self, other: &Self) -> bool {
-        self.elements == other.elements
     }
 }
 
@@ -111,37 +185,6 @@ impl fmt::Display for FiniteSet {
     }
 }
 
-impl Val for FiniteSet {
-    fn compare(&self, other: &dyn Val) -> bool {
-        if let Some(other_finite_set) = other.downcast_ref::<FiniteSet>() {
-            self == other_finite_set
-        } else {
-            false
-        }
-        
-    }
-
-    fn hash_val(&self, state: &mut dyn Hasher) {
-        state.write_u64(self.hash);
-    }
-
-    fn is_set(&self) -> bool {
-        true
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_boxed_any(&self) -> Box<dyn Any> {
-        Box::new(self.to_owned())
-    }
-
-    fn into_boxed_set(&self) -> Option<Box<dyn Set>> {
-        Some(Box::new(self.to_owned()))
-    }
-}
-
 impl Set for FiniteSet {
     fn is_finite(&self) -> bool {
         true
@@ -151,240 +194,166 @@ impl Set for FiniteSet {
         true
     }
 
-    fn enumerate(&self) -> Option<Box<dyn Iterator<Item = &Box<dyn Val>> + '_>> {
-        Some(Box::new(self.elements.iter()))
-     }
+    fn enumerate<I: ValIterator>(&self) -> Option<I> {
+        todo!()
+    }
 
     fn contains(&self, other: &Box<dyn Val>) -> bool {
         self.elements.contains(other)
     }
 
-    fn is_subset(&self, other: &Box<dyn Set>) -> bool {
-        if other.is_countable() {
-            self.enumerate().unwrap().all(|value| {
-                other.contains(value)
-            })
-        } else {
-            todo!()
+    fn is_subset(&self, other: &Rc<CanonSet>) -> bool {
+        match other.as_ref() {
+            CanonSet::Finite(set) => self == set,
+            
+            _ => todo!()
         }
     }
 }
 
-/* Infinite Sets
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub enum InfiniteSet {
+    Univ,
+    Nat,
+    Int,
+    Real,
+    Complex,
+    Str
+}
 
-The plan is to use predicates to determine the sets.
-
-
-
-
-
-
-*/
-
-pub trait InfiniteSet: Set {
-    fn display(&self) -> String;
-    fn log(&self) -> String {
-        format!("{{ \x1b[3minfinite set <{}>\x1b[m }}", self.display())
+impl InfiniteSet {
+    pub fn name(&self) -> String {
+        String::from(match self {
+            Self::Univ => "Univ",
+            Self::Nat => "Nat",
+            Self::Int => "Int",
+            Self::Real => "Real",
+            Self::Complex => "Complex",
+            Self::Str => "Str"
+        })
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Int {
-    hash: u64
-}
-
-impl Int {
-    pub fn new() -> Self {
-        Self {
-            hash: 0
-        }
-    }
-}
-
-impl PartialEq for Int {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
-}
-
-impl Hash for Int {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write_u64(self.hash);
-    }
-}
-
-impl fmt::Display for Int {
+impl fmt::Display for InfiniteSet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.display())
+        write!(f, "{}", self.name())
     }
 }
 
-impl Val for Int {
-    fn compare(&self, other: &dyn Val) -> bool {
-        if let Some(_) = other.downcast_ref::<Int>() {
-            true
-        } else {
-            false
-        }
-    }
-
-    fn hash_val(&self, mut state: &mut dyn Hasher) {
-        self.hash(&mut state);
-    }
-
-    fn is_set(&self) -> bool {
-        true
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_boxed_any(&self) -> Box<dyn Any> {
-        Box::new(self.to_owned())
-    }
-
-    fn into_boxed_set(&self) -> Option<Box<dyn Set>> {
-        Some(Box::new(self.to_owned()))
-    }
-}
-
-impl Set for Int {
+impl Set for InfiniteSet {
     fn is_finite(&self) -> bool {
         false
     }
 
     fn is_countable(&self) -> bool {
-        true
-    }
+        match self {
+            Self::Nat |
+            Self::Int |
+            Self::Str => true,
 
-    fn enumerate(&self) -> Option<Box<dyn Iterator<Item = &Box<dyn Val>> + '_>> {
-        todo!()
-    }
-
-    fn contains(&self, other: &Box<dyn Val>) -> bool {
-        // If other is a number && other is not complex or fractional, it is an integer
-        if other.is_num() {
-            if let Some(_) = other.downcast_ref::<Complex<BigRational>>() {
-                false
-            } else if let Some(bigrat) = other.downcast_ref::<BigRational>() {
-                bigrat.denom() == &BigInt::from(1)
-            } else {
-                true
-            }
-        } else {
-            false
+            _ => false
         }
     }
 
-    fn is_subset(&self, other: &Box<dyn Set>) -> bool {
+    fn enumerate<I: ValIterator>(&self) -> Option<I> {
+        match self {
+            _ => todo!()
+        }
+    }
+
+    fn contains(&self, other: &Box<dyn Val>) -> bool {
+        match self {
+            Self::Univ => true,
+            Self::Nat => if other.is_num() {
+                if let Some(bigint) = other.downcast_ref::<BigInt>() {
+                    bigint.sign() != Sign::Minus
+                } else if let Some(bigrat) = other.downcast_ref::<BigRational>() {
+                    bigrat.is_integer() && bigrat.numer().sign() != Sign::Minus
+                } else if let Some(complex) = other.downcast_ref::<Complex<BigRational>>() {
+                    complex.im == BigRational::zero() && complex.re.is_integer() && complex.re.numer().sign() != Sign::Minus
+                } else if let Some(_) = other.downcast_ref::<bool>() {
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+
+            Self::Int => if other.is_num() {
+                if let Some(_) = other.downcast_ref::<BigInt>() {
+                    true
+                } else if let Some(bigrat) = other.downcast_ref::<BigRational>() {
+                    bigrat.is_integer()
+                } else if let Some(complex) = other.downcast_ref::<Complex<BigRational>>() {
+                    complex.im == BigRational::zero() && complex.re.is_integer()
+                } else if let Some(_) = other.downcast_ref::<bool>() {
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+
+            Self::Real => if other.is_num() {
+                if let Some(_) = other.downcast_ref::<BigInt>() {
+                    true
+                } else if let Some(_) = other.downcast_ref::<BigRational>() {
+                    true
+                } else if let Some(complex) = other.downcast_ref::<Complex<BigRational>>() {
+                    complex.im == BigRational::zero()
+                } else if let Some(_) = other.downcast_ref::<bool>() {
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+
+            Self::Complex => other.is_num(), // as of now, Complex is the all-encompassing numeric type. Perhaps in future this will be changed. Perhaps a Num class or smth. Also, there may be other number types as well, like Alg, Even, Odd, etc.
+
+            Self::Str => if other.is_str() {
+                if let Some(_) = other.downcast_ref::<String>() {
+                    true
+                } else {
+                    false
+                }
+            } else {
+                // todo, allow for casting to string
+                // perhapse, can_str for can be casted to str
+                false
+            }
+            _ => todo!()
+        }
+    }
+
+    fn is_subset(&self, other: &Rc<CanonSet>) -> bool {
         todo!()
     }
+
+
 }
 
-impl InfiniteSet for Int {
-    fn display(&self) -> String {
-        String::from("Int")
-    }
+#[derive(Debug)]
+pub struct SetPool {
+    pool: HashSet<Rc<CanonSet>>
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Real {
-    hash: u64
-}
-
-impl Real {
+impl SetPool {
     pub fn new() -> Self {
-        Self {
-            hash: 1
-        }
-    }
-}
-
-impl PartialEq for Real {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
-}
-
-impl Hash for Real {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write_u64(self.hash);
-    }
-}
-
-impl fmt::Display for Real {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.display())
-    }
-}
-
-impl Val for Real {
-    fn compare(&self, other: &dyn Val) -> bool {
-        if let Some(_) = other.downcast_ref::<Real>() {
-            true
-        } else {
-            false
+        SetPool {
+            pool: HashSet::new()
         }
     }
 
-    fn hash_val(&self, mut state: &mut dyn Hasher) {
-        self.hash(&mut state)
-    }
-
-    fn is_set(&self) -> bool {
-        true
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_boxed_any(&self) -> Box<dyn Any> {
-        Box::new(self.to_owned())
-    }
-
-    fn into_boxed_set(&self) -> Option<Box<dyn Set>> {
-        Some(Box::new(self.to_owned()))
-    }
-}
-
-impl Set for Real {
-    fn is_finite(&self) -> bool {
-        false
-    }
-
-    fn is_countable(&self) -> bool {
-        false
-    }
-
-    fn enumerate(&self) -> Option<Box<dyn Iterator<Item = &Box<dyn Val>> + '_>> {
-        None
-    }
-
-    fn contains(&self, other: &Box<dyn Val>) -> bool {
-        if other.is_num() {
-            if let Some(_) = other.downcast_ref::<Complex<BigRational>>() {
-                false
-            } else {
-                true
-            }
-        } else {
-            true
+    /// Interns the given [`Rc<Set>`] and returns it back out. If it is new, it will intern it to the [`SetPool`], otherwise it will just return it
+    pub fn intern(&mut self, set: &Rc<CanonSet>) -> Rc<CanonSet> {
+        if !self.pool.contains(set) {
+            self.pool.insert(Rc::clone(set));
         }
-    }
 
-    fn is_subset(&self, other: &Box<dyn Set>) -> bool {
-        todo!()
+        Rc::clone(set)
     }
 }
-
-impl InfiniteSet for Real {
-    fn display(&self) -> String {
-        String::from("Real")
-    }
-}
-
-
-
-

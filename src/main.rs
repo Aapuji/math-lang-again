@@ -1,7 +1,9 @@
 mod ast;
 mod config;
+mod environment;
 mod error;
 mod interpreter;
+mod iter;
 mod lexer;
 mod parser;
 mod set;
@@ -25,15 +27,18 @@ fn main() {
 
         let tokens = lexer.lex().unwrap();
 
-        // println!("{:#?}", tokens);
+        println!("\n--- Tokens ---\n{:#?}", tokens);
 
         let mut parser = Parser::new(&tokens);
         let ast = parser.parse();
 
-        println!("{:#?}", ast);
+        println!("\n--- AST---\n{:#?}", ast);
+
+        println!("\n--- Code Output ---");
 
         let mut interpreter = Interpreter::new();
         interpreter.interpret(ast.stmts());
-        println!("{:#?}", interpreter);
+
+        println!("\n--- Interpreter State ---\n{:#?}", interpreter);
     }
 }

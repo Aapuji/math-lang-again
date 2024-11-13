@@ -186,16 +186,7 @@ impl<'t> Lexer<'t> {
                 }
                 '\\' => self.add_token(tokens, TokenKind::BackSlash),
                 '<' => {
-                    let n = next();
-
-                    if let Some('=') = n {
-                        if let Some(':') = next() {
-                            self.add_token(tokens, TokenKind::LessEqColon);
-                        } else {
-                            self.add_token(tokens, TokenKind::LessEq);
-                            continue;
-                        }
-                    } else if let Some(':') = n {
+                    if let Some(':') = next() {
                         self.add_token(tokens, TokenKind::LessColon);
                     } else {
                         self.add_token(tokens, TokenKind::Less);
@@ -203,16 +194,7 @@ impl<'t> Lexer<'t> {
                     }
                 }
                 '>' => {
-                    let n = next();
-
-                    if let Some('=') = n {
-                        if let Some(':') = next() {
-                            self.add_token(tokens, TokenKind::GreaterEqColon);
-                        } else {
-                            self.add_token(tokens, TokenKind::GreaterEq);
-                            continue;
-                        }
-                    } else if let Some(':') = n {
+                    if let Some(':') = next() {
                         self.add_token(tokens, TokenKind::GreaterColon);
                     } else {
                         self.add_token(tokens, TokenKind::Greater);

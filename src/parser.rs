@@ -46,28 +46,24 @@ impl<'t> Parser<'t> {
     }
 
     fn parse_expr_stmt(&mut self) -> Box<dyn Stmt> {
-        let expr = self.parse_expr();
+        let expr = self.parse_expr(false);
 
-        let mut found_endl = false;
+        let mut log_endl = None;
 
         if self.match_next(&[&TokenKind::EOL]) {
             // add log stmt here
-            found_endl = true;
+            log_endl = Some(true);
         }
 
         if self.match_next(&[&TokenKind::Semicolon]) {
-            found_endl = true;
+            log_endl = Some(false);
         }
 
-        if found_endl {
-            Box::new(ExprStmt(expr))
+        if log_endl.is_some() {
+            Box::new(ExprStmt(expr, log_endl.unwrap()))
         } else {
             panic!("Expected ';' or EOL.")
         }
-    }
-
-    fn parse_expr(&mut self) -> Box<dyn Expr> {
-        self.parse_assign()
     }
 
     fn validate_args(&self, args: &[Box<dyn Expr>]) -> Vec<Symbol> {
@@ -83,12 +79,34 @@ impl<'t> Parser<'t> {
             .collect()
     }
 
-    fn parse_assign(&mut self) -> Box<dyn Expr> {
-        let expr = self.parse_type();
+    /// Parses the current expression.
+    /// 
+    /// `can_span_lines` determines whether or not the expresson can span multiple lines, as in:
+    /// ```
+    /// 1
+    /// - 2
+    /// ```
+    /// Would usually output `1` and then `-2`.
+    /// However, in a grouping, it is different:
+    /// ```
+    /// (
+    /// 1
+    /// - 2
+    /// )
+    /// ``` 
+    /// Here, it is known that the whole thing is one expression, so it won't think each EOL is ending the statement. It would output `-1`.
+    fn parse_expr(&mut self, can_span_lines: bool) -> Box<dyn Expr> {
+        self.parse_assign(can_span_lines)
+    }
+
+    fn parse_assign(&mut self, can_span_lines: bool) -> Box<dyn Expr> {
+        let expr = self.parse_type(can_span_lines);
 
         if self.match_next(&[&TokenKind::Eq]) {
+            self.skip_eol();
             self.next();
-            let right = self.parse_assign();
+            
+            let right = self.parse_assign(can_span_lines);
 
             // Parse func: f(x, y, ...) = expr
             if let Some(Call(left, args)) = expr.downcast_ref() {
@@ -102,7 +120,14 @@ impl<'t> Parser<'t> {
                     panic!("Invalid left-hand for function definition: f name");
                 }
                 
-                let args = self.validate_args(args);
+                if args.iter().any(Option::is_none) {
+                    panic!("Function notation requires every argument be defined")
+                }
+
+                let args = self.validate_args(&args
+                    .iter()
+                    .map(|a| a.to_owned().unwrap())
+                    .collect::<Vec<_>>());
                 
                 return Box::new(Assign(Symbol(name.unwrap().clone()), Box::new(Func(args, right))))
             // Parse var: x = expr
@@ -120,28 +145,38 @@ impl<'t> Parser<'t> {
         expr
     }
 
-    fn parse_type(&mut self) -> Box<dyn Expr> {
-        let expr = self.parse_or();
+    fn parse_type(&mut self, can_span_lines: bool) -> Box<dyn Expr> {
+        let expr = self.parse_or(can_span_lines);
 
         if self.match_next(&[&TokenKind::Colon]) {
+            self.skip_eol();
             self.next();
 
-            let right = self.parse_or();
+            let right = self.parse_or(can_span_lines);
 
-            return Box::new(TypeExpr(expr, right)) // Could be a cast (x : Int AFTER x is defined) or a type-declaration (x : Int BEFORE x is defined)
+            if self.match_next(&[&TokenKind::SmallArrow]) {
+                self.next();
+                let codomain = self.parse_or(can_span_lines);
+
+                return Box::new(FuncTypeExpr(expr, vec![right], codomain))
+            } else {
+                return Box::new(TypeExpr(expr, right)) // Could be a cast (x : Int AFTER x is defined) or a type-declaration (x : Int BEFORE x is defined)
+            }
         }
 
         expr
     }
 
-    fn parse_or(&mut self) -> Box<dyn Expr> {
-        let mut expr = self.parse_and();
+    fn parse_or(&mut self, can_span_lines: bool) -> Box<dyn Expr> {
+        let mut expr = self.parse_and(can_span_lines);
 
         while self.match_next(&[&TokenKind::DblBar]) {
             let op = self.current().clone();
+            
+            self.skip_eol();
             self.next();
 
-            let right = self.parse_and();
+            let right = self.parse_and(can_span_lines);
 
             expr = Box::new(Binary(expr, op, right));
         }
@@ -149,14 +184,16 @@ impl<'t> Parser<'t> {
         expr
     }
 
-    fn parse_and(&mut self) -> Box<dyn Expr> {
-        let mut expr = self.parse_comp();
+    fn parse_and(&mut self, can_span_lines: bool) -> Box<dyn Expr> {
+        let mut expr = self.parse_comp(can_span_lines);
 
         while self.match_next(&[&TokenKind::DblAmp]) {
             let op = self.current().clone();
+
+            self.skip_eol();
             self.next();
 
-            let right = self.parse_comp();
+            let right = self.parse_comp(can_span_lines);
 
             expr = Box::new(Binary(expr, op, right));
         }
@@ -166,8 +203,8 @@ impl<'t> Parser<'t> {
 
     // TODO: Have it allow for a < b < c.
     // Perhaps in another pass? As it will have to check if the type implements the Ord class rather than just PartialOrd.
-    fn parse_comp(&mut self) -> Box<dyn Expr> {
-        let mut expr = self.parse_set_comp();
+    fn parse_comp(&mut self, can_span_lines: bool) -> Box<dyn Expr> {
+        let mut expr = self.parse_set_comp(can_span_lines);
 
         while self.match_next(&[
             &TokenKind::DblEq, 
@@ -175,9 +212,11 @@ impl<'t> Parser<'t> {
             &TokenKind::LessEq, &TokenKind::GreaterEq
         ]) {
             let op = self.current().clone();
+
+            self.skip_eol();
             self.next();
 
-            let right = self.parse_set_comp();
+            let right = self.parse_set_comp(can_span_lines);
 
             expr = Box::new(Binary(expr, op, right));
         }
@@ -185,18 +224,19 @@ impl<'t> Parser<'t> {
         expr
     }
 
-    fn parse_set_comp(&mut self) -> Box<dyn Expr> {
-        let mut expr = self.parse_set_ops();
+    fn parse_set_comp(&mut self, can_span_lines: bool) -> Box<dyn Expr> {
+        let mut expr = self.parse_set_ops(can_span_lines);
 
         while self.match_next(&[
             &TokenKind::EqColon,
             &TokenKind::LessColon, &TokenKind::GreaterColon,
-            &TokenKind::LessEqColon, &TokenKind::GreaterEqColon
         ]) {
             let op = self.current().clone();
+
+            self.skip_eol();
             self.next();
 
-            let right = self.parse_set_ops();
+            let right = self.parse_set_ops(can_span_lines);
 
             expr = Box::new(Binary(expr, op, right));
         }
@@ -204,14 +244,16 @@ impl<'t> Parser<'t> {
         expr
     }
 
-    fn parse_set_ops(&mut self) -> Box<dyn Expr> {
-        let mut expr = self.parse_term();
+    fn parse_set_ops(&mut self, can_span_lines: bool) -> Box<dyn Expr> {
+        let mut expr = self.parse_term(can_span_lines);
 
-        while self.match_next(&[&TokenKind::Amp, &TokenKind::Bar, &TokenKind::BackSlash]) {
+        while self.match_next(&[&TokenKind::Amp, &TokenKind::Bar, &TokenKind::BackSlash, &TokenKind::Tilde]) {
             let op = self.current().clone();
+
+            self.skip_eol();
             self.next();
 
-            let right = self.parse_term();
+            let right = self.parse_term(can_span_lines);
 
             expr = Box::new(Binary(expr, op, right));
         }
@@ -219,14 +261,16 @@ impl<'t> Parser<'t> {
         expr
     }
 
-    fn parse_term(&mut self) -> Box<dyn Expr> {
-        let mut expr = self.parse_factor();
+    fn parse_term(&mut self, can_span_lines: bool) -> Box<dyn Expr> {
+        let mut expr = self.parse_factor(can_span_lines);
 
         while self.match_next(&[&TokenKind::Plus, &TokenKind::Minus]) {
             let op = self.current().clone();
+
+            self.skip_eol();
             self.next();
 
-            let right = self.parse_factor();
+            let right = self.parse_factor(can_span_lines);
 
             expr = Box::new(Binary(expr, op, right));
         }
@@ -234,14 +278,16 @@ impl<'t> Parser<'t> {
         expr
     }
 
-    fn parse_factor(&mut self) -> Box<dyn Expr> {
-        let mut expr = self.parse_unary();
+    fn parse_factor(&mut self, can_span_lines: bool) -> Box<dyn Expr> {
+        let mut expr = self.parse_unary(can_span_lines);
 
         while self.match_next(&[&TokenKind::Slash, &TokenKind::Star]) {
             let op = self.current().clone();
+
+            self.skip_eol();
             self.next();
 
-            let right = self.parse_unary();
+            let right = self.parse_unary(can_span_lines);
 
             expr = Box::new(Binary(expr, op, right));
         }
@@ -249,31 +295,38 @@ impl<'t> Parser<'t> {
         expr
     }
 
-    fn parse_unary(&mut self) -> Box<dyn Expr> {
+    fn parse_unary(&mut self, can_span_lines: bool) -> Box<dyn Expr> {
         match self.current().kind() {
             TokenKind::Bang  |
             TokenKind::Minus |
-            TokenKind::Plus  |
-            TokenKind::Tilde => {
+            TokenKind::Plus  => {
                 let op = self.current().clone();
+
+                self.skip_eol();
                 self.next();
 
-                let right = self.parse_unary();
+                let right = self.parse_unary(can_span_lines);
 
                 return Box::new(Unary(op, right));
             }
-            _ => self.parse_power()
+            _ => self.parse_power(can_span_lines)
         }
     }
 
-    fn parse_power(&mut self) -> Box<dyn Expr> {
+    fn parse_power(&mut self, can_span_lines: bool) -> Box<dyn Expr> {
         let mut expr = self.parse_call();
+
+        if can_span_lines {
+            self.skip_eol();
+        }
 
         if self.match_next(&[&TokenKind::Caret]) {
             let op = self.current().clone();
+
+            self.skip_eol();
             self.next();
 
-            let right = self.parse_power();
+            let right = self.parse_unary(can_span_lines);
             expr = Box::new(Binary(expr, op, right));
         }
 
@@ -284,6 +337,7 @@ impl<'t> Parser<'t> {
         let mut expr = self.parse_primary();
 
         if self.match_next(&[&TokenKind::OpenParen]) {
+            self.skip_eol();
             expr = self.finish_call(expr);
         }
 
@@ -302,12 +356,17 @@ impl<'t> Parser<'t> {
                     }
                 }
 
+                self.skip_eol();
                 self.next();
 
-                args.push(self.parse_expr());
+                args.push(Some(self.parse_expr(true)));
+
+                self.skip_eol();
 
                 self.match_next(&[&TokenKind::Comma])
             } else {
+                args.push(None);
+
                 true
             }
         } {}
@@ -318,7 +377,11 @@ impl<'t> Parser<'t> {
             panic!("Expected ')' after arguments");
         }
 
-        Box::new(Call(callee, args))
+        if self.match_next(&[&TokenKind::OpenParen]) {
+            self.finish_call(Box::new(Call(callee, args)))
+        } else {
+            Box::new(Call(callee, args))
+        }
     }
 
     fn parse_primary(&mut self) -> Box<dyn Expr> {
@@ -418,9 +481,12 @@ impl<'t> Parser<'t> {
     }
 
     fn parse_grouping(&mut self) -> Box<dyn Expr> {
+        self.skip_eol();
         self.next();
 
-        let expr = self.parse_expr();
+        let expr = self.parse_expr(true);
+
+        self.skip_eol();
         
         if self.match_next(&[&TokenKind::CloseParen]) {
             ()
@@ -432,6 +498,7 @@ impl<'t> Parser<'t> {
     }
 
     fn parse_list(&mut self) -> Box<dyn Expr> {
+        self.skip_eol();
         self.next();
 
         let mut matrix_dim = None;
@@ -439,9 +506,12 @@ impl<'t> Parser<'t> {
         let mut list = Vec::new();
 
         while self.current().kind() != &TokenKind::CloseBracket {
-            list.push(self.parse_expr());
+            list.push(self.parse_expr(true));
+
+            self.skip_eol();
 
             if self.match_next(&[&TokenKind::Comma]) {
+                self.skip_eol();
                 self.next();
 
                 continue
@@ -460,6 +530,7 @@ impl<'t> Parser<'t> {
                 result.push(list);
                 list = Vec::new();
 
+                self.skip_eol();
                 self.next();
                 continue;
             } else if self.match_next(&[&TokenKind::CloseBracket]) {
@@ -472,6 +543,13 @@ impl<'t> Parser<'t> {
                     result.push(list);
                     list = Vec::new();
                 }
+
+                break;
+            } else if self.match_next(&[&TokenKind::EOL]) {
+                self.skip_eol();
+                self.next();
+
+                continue;
             } else if self.match_next(&[&TokenKind::EOF]) {
                 panic!("Expected ']'");
             } else {
@@ -487,14 +565,18 @@ impl<'t> Parser<'t> {
     }
 
     fn parse_set(&mut self) -> Box<dyn Expr> {
+        self.skip_eol();
         self.next();
 
         let mut values = Vec::new();
 
         while self.current().kind() != &TokenKind::CloseBrace {
-            values.push(self.parse_expr());
+            values.push(self.parse_expr(true));
+
+            self.skip_eol();
 
             if self.match_next(&[&TokenKind::Comma]) {
+                self.skip_eol();
                 self.next();
 
                 continue
@@ -502,6 +584,11 @@ impl<'t> Parser<'t> {
                 panic!("Elements in a set must be separated by ','s not ';'s")
             } else if self.match_next(&[&TokenKind::CloseBrace]) {
                 break
+            } else if self.match_next(&[&TokenKind::EOL]) {
+                self.skip_eol();
+                self.next();
+
+                continue;
             } else if self.match_next(&[&TokenKind::EOF]) {
                 panic!("Expected '}}'");
             } else {
@@ -510,6 +597,13 @@ impl<'t> Parser<'t> {
         }
 
         Box::new(Set(values))
+    }
+
+    /// Keeps skipping over tokens until the next token is not EOL.
+    fn skip_eol(&mut self) {
+        while self.match_next(&[&TokenKind::EOL]) {
+            ()
+        }
     }
 
     /// Consumes next token if it matches the given [`TokenKind`]

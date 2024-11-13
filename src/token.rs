@@ -13,13 +13,52 @@ impl Token {
         &self.kind
     }
 
-    pub fn lexeme(&self) -> Option<&str> {
+    pub fn lexeme(&self) -> &str {
         match &self.kind {
             TokenKind::Ident(lexeme)    |
             TokenKind::String(lexeme)   |
             TokenKind::Char(lexeme)     |
-            TokenKind::Number(lexeme)   => Some(lexeme),
-            _ => None
+            TokenKind::Number(lexeme)   => lexeme,
+            
+            TokenKind::Amp => "&",
+            TokenKind::BackSlash => "\\",
+            TokenKind::Bang => "!",
+            TokenKind::BangEq => "!=",
+            TokenKind::Bar => "|",
+            TokenKind::Caret => "^",
+            TokenKind::CloseBrace => "}",
+            TokenKind::CloseBracket => "]",
+            TokenKind::CloseParen => ")",
+            TokenKind::Colon => ":",
+            TokenKind::Comma => ",",
+            TokenKind::DblAmp => "&&",
+            TokenKind::DblBar => "||",
+            TokenKind::DblDot => "..",
+            TokenKind::DblEq => "==",
+            TokenKind::Dot => ".",
+            TokenKind::Eq => "=",
+            TokenKind::EqColon => "=:",
+            TokenKind::FatArrow => "=>",
+            TokenKind::Greater => ">",
+            TokenKind::GreaterColon => ">:",
+            TokenKind::GreaterEq => ">=",
+            TokenKind::Hash => "#",
+            TokenKind::Less => "<",
+            TokenKind::LessColon => "<:",
+            TokenKind::LessEq => "<=",
+            TokenKind::Minus => "-",
+            TokenKind::OpenBrace => "{",
+            TokenKind::OpenBracket => "[",
+            TokenKind::OpenParen => "(",
+            TokenKind::Plus => "+",
+            TokenKind::Semicolon => ";",
+            TokenKind::Slash => "/",
+            TokenKind::SmallArrow => "->",
+            TokenKind::Star => "*",
+            TokenKind::Tilde => "~",
+
+            TokenKind::EOF | 
+            TokenKind::EOL => ""
         }
     }
 
@@ -61,10 +100,7 @@ pub enum TokenKind {
     DblAmp, DblBar,
     EqColon, LessColon, GreaterColon, 
     SmallArrow, FatArrow,
-
-    
-    // Triple-Character Tokens
-    LessEqColon, GreaterEqColon,
+    DblDot,
 
     // Value Tokens
     Ident(String), String(String), Char(String),
